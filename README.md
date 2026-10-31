@@ -17,29 +17,44 @@ Ou da fonte: `cargo install --git https://github.com/bernardofernandezz/devup`
 ## Uso
 
 ```sh
-devup                          # menu interativo (espaço marca, Enter instala)
-devup list [--category games]  # catálogo e como cada app seria instalado nesta máquina
-devup install docker steam     # instala direto
+devup                          # menu interativo com perfis e módulos (espaço marca, Enter instala)
+devup list [--category games]  # módulos, como cada um seria instalado aqui, e perfis
+devup list --profile dev       # módulos de um perfil
+devup install dev docker       # instala perfis e/ou módulos (dependências entram sozinhas)
 devup --dry-run install ...    # só mostra os comandos
 ```
 
-## Adicionar apps
+Perfis embutidos: `dev`, `gaming`, `essentials`, `server`, `full`.
 
-Edite `apps.toml` e recompile. Exemplo:
+## Seus módulos e perfis
+
+Crie arquivos em `~/.config/devup/modules/*.toml`. Um módulo com o mesmo nome de um embutido o substitui.
 
 ```toml
-[[app]]
+[profile.meu-setup]
+description = "Meu setup"
+include = ["dev"]                    # outros perfis
+modules = ["docker", "obsidian"]
+
+[[module]]
 name = "docker"
-category = "dev"                # dev | games | general
+category = "dev"                     # dev | games | general | server | shell | desktop | theme | dotfiles
 description = "Containers"
-pacman = "docker"               # pacotes nativos (separados por espaço)
+requires = ["git"]                   # instalados antes, automaticamente
+pacman = "docker docker-compose"     # pacotes nativos (separados por espaço)
 apt = "docker.io"
 dnf = "moby-engine"
 zypper = "docker"
-flatpak = "..."                 # fallback
-script = "curl ... | sh"        # último fallback
-bin = "docker"                  # se já estiver no PATH, pula
+aur = "..."                          # usado se houver paru/yay
+flatpak = "..."                      # fallback
+script = "curl ... | sh"             # último fallback
+bin = "docker"                       # se já estiver no PATH, pula a instalação
+services = ["docker"]                # systemctl enable --now
+groups = ["docker"]                  # usermod -aG <grupo> $USER
+run = ["echo pronto"]                # comandos pós-instalação (devem ser idempotentes)
 ```
+
+O catálogo embutido fica em `catalog/default.toml`.
 
 ## Publicar uma versão
 
