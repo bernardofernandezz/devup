@@ -1,6 +1,7 @@
+use crate::config::config_dir;
 use crate::pm::Pm;
 use serde::Deserialize;
-use std::{collections::BTreeMap, env, fs, path::PathBuf};
+use std::{collections::BTreeMap, fs, path::PathBuf};
 
 const DEFAULT: &str = include_str!("../catalog/default.toml");
 pub const CATEGORIES: [&str; 8] = ["dev", "games", "general", "server", "shell", "desktop", "theme", "dotfiles"];
@@ -155,10 +156,7 @@ fn parse(text: &str, origin: &str) -> Result<Catalog, String> {
 }
 
 fn user_files() -> Vec<PathBuf> {
-    let config = env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
-    let Some(config) = config else { return vec![] };
+    let Some(config) = config_dir() else { return vec![] };
     let mut files: Vec<_> = fs::read_dir(config.join("devup/modules"))
         .into_iter()
         .flatten()

@@ -1,6 +1,6 @@
 use crate::catalog::Module;
 use crate::pm::{Sys, strs};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 
 #[derive(Debug, PartialEq)]
 pub enum Method<'a> {
@@ -30,6 +30,28 @@ pub fn resolve<'a>(m: &'a Module, sys: &Sys) -> Method<'a> {
     } else {
         Method::Nothing
     }
+}
+
+/// Consulta o sistema; None quando não dá para saber (script sem `bin`, módulo só de config).
+pub fn installed(m: &Module, sys: &Sys) -> Option<bool> {
+    let pkgs = |p: &str| p.split_whitespace().map(String::from).collect::<Vec<_>>();
+    match resolve(m, sys) {
+        Method::Installed => Some(true),
+        Method::Native(p) => Some(sys.has_packages(&pkgs(p))),
+        Method::Aur(p) => Some(succeeds(&[strs(&["pacman", "-Q"]), pkgs(p)].concat())),
+        Method::Flatpak(f) => Some(succeeds(&strs(&["flatpak", "info", "--user", f]))),
+        Method::Script(_) if m.bin.is_some() => Some(false),
+        _ => None,
+    }
+}
+
+pub fn succeeds(cmd: &[String]) -> bool {
+    Command::new(&cmd[0])
+        .args(&cmd[1..])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// Instalações agrupadas (nativo, aur, flatpak), depois scripts, depois services/groups/run na ordem dos módulos.

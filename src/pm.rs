@@ -71,6 +71,16 @@ impl Sys {
         cmds.push(self.sudo(&[base, pkgs].concat()));
         cmds
     }
+
+    pub fn has_packages(&self, pkgs: &[String]) -> bool {
+        let query: &[&str] = match self.pm {
+            Some(Pm::Pacman) => &["pacman", "-Q"],
+            Some(Pm::Apt) => &["dpkg", "-s"],
+            Some(Pm::Dnf | Pm::Zypper) => &["rpm", "-q"],
+            None => return false,
+        };
+        crate::plan::succeeds(&[strs(query), pkgs.to_vec()].concat())
+    }
 }
 
 pub fn has_bin(name: &str) -> bool {
