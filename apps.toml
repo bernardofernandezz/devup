@@ -1,0 +1,210 @@
+# Catálogo do devup. Ordem de instalação: nativo (pacman/apt/dnf/zypper) → flatpak → script.
+# Vários pacotes nativos podem ser separados por espaço. `bin`: se já estiver no PATH, o app é pulado.
+
+# ---------- dev ----------
+[[app]]
+name = "git"
+category = "dev"
+description = "Controle de versão"
+pacman = "git"
+apt = "git"
+dnf = "git"
+zypper = "git"
+bin = "git"
+
+[[app]]
+name = "neovim"
+category = "dev"
+description = "Editor de texto no terminal"
+pacman = "neovim"
+apt = "neovim"
+dnf = "neovim"
+zypper = "neovim"
+flatpak = "io.neovim.nvim"
+
+[[app]]
+name = "docker"
+category = "dev"
+description = "Containers"
+pacman = "docker docker-compose"
+apt = "docker.io docker-compose"
+dnf = "moby-engine docker-compose"
+zypper = "docker docker-compose"
+
+[[app]]
+name = "lazygit"
+category = "dev"
+description = "TUI para git"
+pacman = "lazygit"
+apt = "lazygit"
+zypper = "lazygit"
+
+[[app]]
+name = "cli-tools"
+category = "dev"
+description = "ripgrep, fzf, fd, bat, zoxide"
+pacman = "ripgrep fzf fd bat zoxide"
+apt = "ripgrep fzf fd-find bat zoxide"
+dnf = "ripgrep fzf fd-find bat zoxide"
+zypper = "ripgrep fzf fd bat zoxide"
+
+[[app]]
+name = "btop"
+category = "dev"
+description = "Monitor de recursos"
+pacman = "btop"
+apt = "btop"
+dnf = "btop"
+zypper = "btop"
+
+[[app]]
+name = "nodejs"
+category = "dev"
+description = "Node.js + npm"
+pacman = "nodejs npm"
+apt = "nodejs npm"
+dnf = "nodejs npm"
+
+[[app]]
+name = "mise"
+category = "dev"
+description = "Gerenciador de versões (node, python, go...)"
+pacman = "mise"
+script = "curl -fsSL https://mise.run | sh"
+bin = "mise"
+
+[[app]]
+name = "rustup"
+category = "dev"
+description = "Toolchain Rust"
+pacman = "rustup"
+script = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+bin = "rustup"
+
+[[app]]
+name = "vscode"
+category = "dev"
+description = "Visual Studio Code"
+flatpak = "com.visualstudio.code"
+
+[[app]]
+name = "ghostty"
+category = "dev"
+description = "Terminal com GPU"
+pacman = "ghostty"
+zypper = "ghostty"
+
+# ---------- games ----------
+[[app]]
+name = "steam"
+category = "games"
+description = "Loja e launcher da Valve"
+flatpak = "com.valvesoftware.Steam"
+
+[[app]]
+name = "lutris"
+category = "games"
+description = "Launcher de jogos multi-plataforma"
+pacman = "lutris"
+apt = "lutris"
+dnf = "lutris"
+zypper = "lutris"
+flatpak = "net.lutris.Lutris"
+
+[[app]]
+name = "heroic"
+category = "games"
+description = "Epic Games / GOG / Amazon"
+flatpak = "com.heroicgameslauncher.hgl"
+
+[[app]]
+name = "protonup-qt"
+category = "games"
+description = "Gerencia versões do Proton-GE"
+flatpak = "net.davidotek.pupgui2"
+
+[[app]]
+name = "gamemode"
+category = "games"
+description = "Otimizações de performance para jogos"
+pacman = "gamemode"
+apt = "gamemode"
+dnf = "gamemode"
+zypper = "gamemode"
+
+[[app]]
+name = "mangohud"
+category = "games"
+description = "Overlay de FPS e métricas"
+pacman = "mangohud"
+apt = "mangohud"
+dnf = "mangohud"
+zypper = "mangohud"
+
+[[app]]
+name = "discord"
+category = "games"
+description = "Chat de voz e texto"
+pacman = "discord"
+flatpak = "com.discordapp.Discord"
+
+# ---------- general ----------
+[[app]]
+name = "firefox"
+category = "general"
+description = "Navegador"
+pacman = "firefox"
+dnf = "firefox"
+zypper = "MozillaFirefox"
+flatpak = "org.mozilla.firefox"
+
+[[app]]
+name = "chromium"
+category = "general"
+description = "Navegador"
+pacman = "chromium"
+dnf = "chromium"
+zypper = "chromium"
+flatpak = "org.chromium.Chromium"
+
+[[app]]
+name = "obsidian"
+category = "general"
+description = "Notas em markdown"
+pacman = "obsidian"
+flatpak = "md.obsidian.Obsidian"
+
+[[app]]
+name = "spotify"
+category = "general"
+description = "Música"
+flatpak = "com.spotify.Client"
+
+[[app]]
+name = "vlc"
+category = "general"
+description = "Player de vídeo"
+pacman = "vlc"
+apt = "vlc"
+dnf = "vlc"
+zypper = "vlc"
+flatpak = "org.videolan.VLC"
+
+[[app]]
+name = "obs"
+category = "general"
+description = "Gravação e streaming"
+pacman = "obs-studio"
+apt = "obs-studio"
+dnf = "obs-studio"
+flatpak = "com.obsproject.Studio"
+
+[[app]]
+name = "libreoffice"
+category = "general"
+description = "Suíte de escritório"
+pacman = "libreoffice-fresh"
+apt = "libreoffice"
+dnf = "libreoffice"
+zypper = "libreoffice"
+flatpak = "org.libreoffice.LibreOffice"
