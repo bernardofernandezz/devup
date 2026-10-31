@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200" viewBox="0 0 360 200" role="img" aria-label="tema gruvbox">
+  <rect width="360" height="200" rx="14" fill="#282828"/>
+  <rect x="0.5" y="0.5" width="359" height="199" rx="14" fill="none" stroke="#3c3836"/>
+  <circle cx="22" cy="20" r="5" fill="#cc241d"/><circle cx="38" cy="20" r="5" fill="#d79921"/><circle cx="54" cy="20" r="5" fill="#98971a"/>
+  <g font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="14">
+    <text x="20" y="60"><tspan fill="#98971a">❯</tspan><tspan fill="#ebdbb2" dx="8">devup theme set</tspan><tspan fill="#d79921" dx="8">gruvbox</tspan></text>
+    <text x="20" y="88"><tspan fill="#458588">~/projetos</tspan><tspan fill="#b16286" dx="8">main</tspan><tspan fill="#d79921" dx="8">!2</tspan></text>
+    <text x="20" y="116"><tspan fill="#98971a">✓</tspan><tspan fill="#928374" dx="8">kitty · tmux · waybar · wallpaper</tspan></text>
+  </g>
+  <rect x="20" y="150" width="20" height="20" rx="5" fill="#cc241d"/><rect x="46" y="150" width="20" height="20" rx="5" fill="#98971a"/><rect x="72" y="150" width="20" height="20" rx="5" fill="#d79921"/><rect x="98" y="150" width="20" height="20" rx="5" fill="#458588"/><rect x="124" y="150" width="20" height="20" rx="5" fill="#b16286"/><rect x="150" y="150" width="20" height="20" rx="5" fill="#689d6a"/>
+  <rect x="176" y="150" width="164" height="20" rx="5" fill="#d79921"/>
+</svg>

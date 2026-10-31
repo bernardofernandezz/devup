@@ -1,159 +1,199 @@
-# devup
+<p align="center">
+  <img src="assets/banner.svg" alt="devup: seu Linux inteiro em um comando" width="100%">
+</p>
 
-Configure seu Linux no estilo [Omarchy](https://omarchy.org), em qualquer distro: escolha apps de dev, jogos e uso geral e o `devup` instala cada um pelo melhor método disponível (pacote nativo → flatpak → script).
+<p align="center">
+  <a href="https://github.com/bernardofernandezz/devup/releases/latest"><img src="https://img.shields.io/github/v/release/bernardofernandezz/devup?style=flat-square&color=7aa2f7&label=release" alt="Release"></a>
+  <a href="https://github.com/bernardofernandezz/devup/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/bernardofernandezz/devup/release.yml?style=flat-square&color=9ece6a&label=build" alt="Build"></a>
+  <img src="https://img.shields.io/badge/linux-x86__64%20%7C%20aarch64-bb9af7?style=flat-square" alt="x86_64 | aarch64">
+  <img src="https://img.shields.io/badge/feito%20com-Rust-f7768e?style=flat-square" alt="Rust">
+</p>
 
-Suporta distros com `pacman`, `apt`, `dnf`, `zypper`, `apk` ou `xbps` (Arch, Debian/Ubuntu, Fedora, openSUSE, Alpine, Void e derivadas). Nas demais, usa flatpak e scripts. Se um pacote não existir na versão da sua distro, só ele falha: o resto é instalado.
+<p align="center">
+  <b>Formatou o PC? Trocou de distro? Uma linha e sua máquina volta a ser sua.</b><br>
+  Apps de dev, jogos e uso geral, dotfiles, shell, tema e desktop, descritos num arquivo e aplicados em <i>qualquer</i> distro.
+</p>
 
-## Instalação
+---
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bernardofernandezz/devup/main/install.sh | sh
+devup init
 ```
 
-Baixa o binário do último Release para `~/.local/bin` (mude com `DEVUP_BIN_DIR=/outro/dir`).
+O `init` abre um menu: você marca perfis e apps, escolhe shell e tema, e o devup resolve o resto. Ele detecta a distro e o desktop, escolhe o melhor jeito de instalar cada coisa, linka as configs e recarrega o que estiver aberto.
 
-Ou da fonte: `cargo install --git https://github.com/bernardofernandezz/devup`
+## Por que
 
-## Uso
+- **Uma distro não te prende.** O mesmo `devup.toml` funciona em Arch, Debian, Ubuntu, Fedora, openSUSE, Alpine, Void e derivadas.
+- **Declarativo e reproduzível.** Seu setup é um arquivo de 5 linhas. `devup apply --from <url>` replica tudo num PC novo.
+- **Nada é apagado.** Toda config substituída vai para um backup, e `devup restore` desfaz.
+- **Um binário, zero dependências.** Estático, cerca de 2 MB, sem runtime.
 
-O seu setup fica em `~/.config/devup/devup.toml`:
+## Como funciona
+
+```mermaid
+flowchart LR
+    A["devup.toml<br/><sub>perfis · apps · shell · tema · dotfiles</sub>"] --> C
+    B["catálogo<br/><sub>embutido + seus módulos + seu repo</sub>"] --> C
+    C["plano<br/><sub>dependências, distro, desktop</sub>"] --> D["pacotes nativos<br/><sub>pacman · apt · dnf · zypper · apk · xbps</sub>"]
+    C --> E["AUR · flatpak · scripts"]
+    C --> F["links de dotfiles<br/><sub>com backup</sub>"]
+    C --> G["serviços · grupos · tema"]
+```
+
+Para cada app, o devup tenta o **pacote nativo** da distro, depois **AUR** (se houver paru/yay), depois **flatpak** e por fim um **script** oficial. Os pacotes vão numa única chamada ao gerenciador. Se um nome não existir na sua versão da distro, só ele falha e o resto é instalado.
+
+## O seu setup
+
+Fica em `~/.config/devup/devup.toml`:
 
 ```toml
 profiles = ["dev", "gaming"]
-modules = ["obsidian"]
-exclude = ["vscode"]   # não aplica, mesmo vindo de um perfil
+modules  = ["obsidian", "spotify"]
+exclude  = ["vscode"]                      # não instala, mesmo vindo de um perfil
+shell    = "zsh"
+theme    = "tokyo-night"
 dotfiles = ["https://github.com/<você>/dotfiles"]
-shell = "zsh"          # zsh | fish | bash
-theme = "tokyo-night"  # devup theme list
 ```
 
-```sh
-devup                          # = devup init: menu com perfis e módulos, salva o devup.toml e aplica
-devup apply                    # converge a máquina para o devup.toml
-devup apply --from <arquivo|url>  # usa o devup.toml de outra máquina/repo (validado antes de salvar)
-devup status                   # ✓ instalado, ✗ falta, ? não dá pra saber
-devup add gaming obsidian      # adiciona ao devup.toml e aplica
-devup remove docker            # tira do devup.toml (não desinstala)
-```
-
-Nova máquina, mesmo setup:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/bernardofernandezz/devup/main/install.sh | sh
-devup apply --from https://raw.githubusercontent.com/<você>/dotfiles/main/devup.toml
-```
-
-Manutenção:
-
-```sh
-devup doctor    # o que está ok, o que o devup contorna e o que precisa de correção
-devup update    # baixa a última versão publicada no mesmo lugar do binário atual
-```
-
-Comandos avulsos, sem mexer no devup.toml:
-
-```sh
-devup list [--category games]  # módulos, como cada um seria instalado aqui, e perfis
-devup list --profile dev       # módulos de um perfil
-devup install dev docker       # instala perfis e/ou módulos (dependências entram sozinhas)
-devup --dry-run install ...    # só mostra os comandos
-```
-
-Perfis embutidos: `dev`, `gaming`, `essentials`, `server`, `desktop`, `full`.
-
-## Shell
-
-```sh
-devup shell zsh   # ou fish / bash: instala, linka a config, starship + zoxide + fzf, e faz chsh
-```
-
-Os três shells carregam os mesmos aliases (`~/.config/devup/shell/aliases.sh`). As configs são links, então suas customizações vão em `~/.config/devup/shell/local.sh` (zsh/bash) ou `local.fish`.
-
-## Desktop
-
-```sh
-devup add desktop   # fontes + config do desktop em uso
-```
-
-O perfil `desktop` detecta o ambiente (`XDG_CURRENT_DESKTOP`) e só aplica o módulo correspondente:
-
-| Módulo | O que faz |
+| Comando | O que faz |
 |---|---|
-| `gnome` | gsettings: tema escuro, 6 workspaces fixos, Super+1..6, Super+Q fecha, Super+Enter terminal |
-| `kde` | kwriteconfig: tema escuro, 6 áreas de trabalho, Meta+1..6, Meta+Q fecha (atalhos após novo login) |
-| `hyprland` | Config completa + waybar, fuzzel, mako, hyprlock, hypridle. Pulado no Omarchy, que já cuida disso |
-| `niri` | Config completa + waybar, fuzzel, mako, swaylock |
-| `fonts` | JetBrainsMono Nerd Font + emoji (em qualquer desktop) |
+| `devup` / `devup init` | Menu interativo: perfis, apps, shell e tema. Salva e aplica |
+| `devup apply` | Deixa a máquina igual ao `devup.toml` |
+| `devup apply --from <arquivo\|url>` | Usa o setup de outra máquina (validado antes de salvar) |
+| `devup add <app\|perfil>…` | Adiciona e aplica |
+| `devup remove <app\|perfil>…` | Tira do arquivo (não desinstala) |
+| `devup status` | ✓ instalado · ✗ falta · - não se aplica aqui |
+| `devup shell zsh\|fish\|bash` | Define o shell padrão |
+| `devup theme list` / `set <nome>` | Lista e troca o tema |
+| `devup dotfiles add <url>` / `sync` | Seu repo de dotfiles |
+| `devup restore [id]` | Devolve os arquivos que o devup substituiu |
+| `devup doctor` | Diagnóstico do que está ok e do que corrigir |
+| `devup update` | Atualiza o devup |
+| `devup list [--category] [--profile]` | O catálogo e como cada app seria instalado aqui |
+| `devup install <app\|perfil>…` | Instala sem mexer no `devup.toml` |
 
-No Hyprland, suas mudanças vão em `~/.config/hypr/local.conf`.
+Todo comando aceita `--dry-run`, que mostra o que seria feito sem executar nem salvar nada.
 
-## Temas
+## O que vem no catálogo
+
+| Perfil | Módulos |
+|---|---|
+| `dev` | git, neovim, docker, lazygit, cli-tools (ripgrep, fzf, fd, bat, zoxide), btop, mise, tmux, starship, vscode |
+| `gaming` | steam, lutris, heroic, protonup-qt, gamemode, mangohud, discord |
+| `essentials` | firefox, obsidian, spotify, vlc, libreoffice |
+| `server` | git, neovim, cli-tools, btop, docker |
+| `desktop` | fonts + a config do desktop que estiver rodando |
+| `full` | dev + gaming + essentials |
+
+Também avulsos: nodejs, rustup, ghostty, kitty, chromium, obs e os shells. Veja todos com `devup list`.
+
+### Shell
+
+`devup shell zsh` (ou `fish`, ou `bash`) instala o shell com starship, zoxide e fzf, linka a config e o torna o shell padrão. Os três carregam os mesmos aliases (`g`, `gs`, `lg`, `v`, `dc`…). Suas customizações vão em `~/.config/devup/shell/local.sh` (ou `local.fish`), que o devup nunca toca.
+
+### Temas
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/themes/tokyo-night.svg" width="180" alt="tokyo-night"><br><code>tokyo-night</code></td>
+    <td align="center"><img src="assets/themes/catppuccin.svg" width="180" alt="catppuccin"><br><code>catppuccin</code></td>
+    <td align="center"><img src="assets/themes/gruvbox.svg" width="180" alt="gruvbox"><br><code>gruvbox</code></td>
+    <td align="center"><img src="assets/themes/nord.svg" width="180" alt="nord"><br><code>nord</code></td>
+  </tr>
+</table>
+
+`devup theme set nord` muda as cores de kitty, ghostty, tmux, waybar e das bordas do Hyprland, além do wallpaper (Hyprland, Niri, GNOME e KDE) e da cor de destaque do GNOME. Tudo é recarregado na hora.
+
+Cada tema é só uma paleta. Para criar o seu, copie um arquivo de [`catalog/themes/`](catalog/themes) para `~/.config/devup/themes/<nome>.toml` e troque as cores.
+
+### Desktop
+
+`devup add desktop` detecta o ambiente (`XDG_CURRENT_DESKTOP`) e aplica só o que corresponde:
+
+| Desktop | O que muda |
+|---|---|
+| GNOME | Tema escuro, 6 workspaces fixos, Super+1..6, Super+Q fecha, Super+Enter abre o terminal |
+| KDE Plasma | Tema escuro, 6 áreas de trabalho, Meta+1..6, Meta+Q fecha |
+| Hyprland | Config completa com waybar, fuzzel, mako, hyprlock e hypridle |
+| Niri | Config completa com waybar, fuzzel, mako e swaylock |
+| qualquer um | JetBrainsMono Nerd Font + emoji |
+
+Se outra ferramenta já gerencia o Hyprland na máquina, o módulo se mantém de fora.
+
+### Dotfiles
+
+Vem com configs prontas para tmux, starship, kitty e ghostty. Para usar as suas:
 
 ```sh
-devup theme list          # tokyo-night, catppuccin, gruvbox, nord + os seus
-devup theme set gruvbox   # troca e recarrega o que estiver aberto
+devup dotfiles add https://github.com/<você>/dotfiles
 ```
 
-Um tema muda as cores de kitty, ghostty, tmux, waybar e das bordas do Hyprland, além do wallpaper (Hyprland, Niri, GNOME e KDE) e da cor de destaque do GNOME. Os arquivos gerados ficam em `~/.config/devup/current-theme/`, que as configs do devup incluem.
+O repo pode estar no **formato stow** (`zsh/.zshrc` vira `~/.zshrc`) ou trazer **módulos próprios** em `devup/*.toml`. Tudo vira symlink, e o que existia antes vai para `~/.local/state/devup/backups/`.
 
-Para criar o seu, copie um tema de `catalog/themes/*.toml` para `~/.config/devup/themes/<nome>.toml` e troque as cores.
+## Seus módulos
 
-## Dotfiles
-
-Módulos como `tmux`, `starship` e `ghostty` já vêm com uma config padrão, aplicada por symlink. Para usar os seus:
-
-```sh
-devup dotfiles add https://github.com/<você>/dotfiles   # clona, registra no devup.toml e aplica
-devup dotfiles sync                                    # git pull em todos e reaplica
-devup restore [id]                                     # desfaz: devolve os arquivos substituídos
-```
-
-O repo é clonado em `~/.local/share/devup/dotfiles/<nome>` e pode ter dois formatos:
-
-- **stow**: cada pasta de topo é um pacote espelhado em `~` (`zsh/.zshrc` → `~/.zshrc`, `nvim/.config/nvim/init.lua` → `~/.config/nvim/init.lua`). É aplicado sempre.
-- **com `devup/*.toml`**: módulos e perfis próprios, com `files.src` relativo à raiz do repo. Use com `devup add`.
-
-Nada é apagado: o que existir no destino vai para `~/.local/state/devup/backups/<id>/`.
-
-## Seus módulos e perfis
-
-Crie arquivos em `~/.config/devup/modules/*.toml`. Um módulo com o mesmo nome de um embutido o substitui.
+Crie `~/.config/devup/modules/*.toml`. Um módulo com o nome de um embutido o substitui.
 
 ```toml
 [profile.meu-setup]
 description = "Meu setup"
-include = ["dev"]                    # outros perfis
+include = ["dev"]
 modules = ["docker", "obsidian"]
 
 [[module]]
 name = "docker"
-category = "dev"                     # dev | games | general | server | shell | desktop | theme | dotfiles
+category = "dev"            # dev | games | general | server | shell | desktop | theme | dotfiles
 description = "Containers"
-requires = ["git"]                   # instalados antes, automaticamente
-pacman = "docker docker-compose"     # pacotes nativos (separados por espaço)
+requires = ["git"]          # instalados antes
+pacman = "docker docker-compose"
 apt = "docker.io"
 dnf = "moby-engine"
 zypper = "docker"
 apk = "docker"
 xbps = "docker"
-aur = "..."                          # usado se houver paru/yay
-flatpak = "..."                      # fallback
-script = "curl ... | sh"             # último fallback
-bin = "docker"                       # se já estiver no PATH, pula a instalação
-services = ["docker"]                # systemctl enable --now
-groups = ["docker"]                  # usermod -aG <grupo> $USER
-files = [{ src = "docker/daemon.json", dest = "~/.config/docker/daemon.json" }]  # src relativo à pasta do .toml
-run = ["echo pronto"]                # comandos pós-instalação (devem ser idempotentes)
-desktop = ["gnome", "kde"]           # só aplica nesses desktops (gnome | kde | hyprland | niri)
-skip_if = "[ -f /etc/algo ]"         # se o comando der sucesso, pula o módulo
+aur = "..."                 # se houver paru/yay
+flatpak = "..."             # fallback
+script = "curl ... | sh"    # último recurso
+bin = "docker"              # se já estiver no PATH, pula a instalação
+services = ["docker"]       # systemctl enable --now
+groups = ["docker"]         # usermod -aG
+files = [{ src = "docker/daemon.json", dest = "~/.config/docker/daemon.json" }]
+run = ["echo pronto"]       # pós-instalação, idempotente
+desktop = ["gnome"]         # só nesses desktops
+skip_if = "[ -f /etc/x ]"   # pula se o comando der sucesso
 ```
 
-O catálogo embutido fica em `catalog/default.toml`, as configs padrão em `catalog/assets/` e os temas em `catalog/themes/` (paletas + `templates/`).
+## Distros
 
-## Publicar uma versão
+| Distro | Gerenciador | Extras |
+|---|---|---|
+| Arch, Manjaro, EndeavourOS… | `pacman` | AUR via paru/yay |
+| Debian, Ubuntu, Mint, Pop!_OS… | `apt` | |
+| Fedora, Nobara… | `dnf` | |
+| openSUSE | `zypper` | |
+| Alpine | `apk` | sem systemd: `services` são ignorados |
+| Void | `xbps` | sem systemd: `services` são ignorados |
+| qualquer outra | flatpak + scripts | |
+
+Os nomes de pacotes do catálogo são conferidos nos repositórios reais de Arch, Ubuntu 24.04, Fedora 42, openSUSE Tumbleweed, Alpine 3.22 e Void.
+
+## Desenvolvimento
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+cargo test                        # testes
+cargo run -- --dry-run init       # experimente sem mudar nada
+cargo run -- doctor
 ```
 
-O workflow `.github/workflows/release.yml` gera os binários `devup-x86_64-linux` e `devup-aarch64-linux` e anexa ao Release.
+- **Código:** `src/` tem `catalog` (módulos, perfis, dependências), `plan` (o que executar), `pm` (distros), `config` (devup.toml), `dotfiles`, `theme` e `doctor`.
+- **Catálogo:** `catalog/default.toml`, com as configs em `catalog/assets/` e os temas em `catalog/themes/`.
+
+**Publicar uma versão:** adicione a seção no [`CHANGELOG.md`](CHANGELOG.md) e rode:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+O workflow testa, gera binários estáticos para x86_64 e aarch64, publica o `sha256sums.txt` e usa a seção do CHANGELOG como notas do Release.
