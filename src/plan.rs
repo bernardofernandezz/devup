@@ -68,20 +68,25 @@ pub fn skip_reason(m: &Module, sys: &Sys) -> Option<String> {
 
 /// Consulta o sistema; None quando não dá para saber (script sem `bin`, módulo só de config).
 pub fn installed(m: &Module, sys: &Sys) -> Option<bool> {
+    let pkg = installed_pkg(m, sys);
+    if m.files.is_empty() {
+        return pkg;
+    }
+    let linked = m.files.iter().all(|f| matches!(link_step(m, f, sys), Step::Link { src, dest } if is_linked(&src, &dest)));
+    Some(pkg.unwrap_or(true) && linked)
+}
+
+/// Só a parte de pacotes: None quando o módulo não instala nada ou não dá para saber.
+pub fn installed_pkg(m: &Module, sys: &Sys) -> Option<bool> {
     let pkgs = |p: &str| p.split_whitespace().map(String::from).collect::<Vec<_>>();
-    let pkg = match resolve(m, sys) {
+    match resolve(m, sys) {
         Method::Installed => Some(true),
         Method::Native(p) => Some(sys.has_packages(&pkgs(p))),
         Method::Aur(p) => Some(succeeds(&[strs(&["pacman", "-Q"]), pkgs(p)].concat())),
         Method::Flatpak(f) => Some(succeeds(&strs(&["flatpak", "info", "--user", f]))),
         Method::Script(_) if m.bin.is_some() => Some(false),
         _ => None,
-    };
-    if m.files.is_empty() {
-        return pkg;
     }
-    let linked = m.files.iter().all(|f| matches!(link_step(m, f, sys), Step::Link { src, dest } if is_linked(&src, &dest)));
-    Some(pkg.unwrap_or(true) && linked)
 }
 
 fn link_step(m: &Module, f: &FileLink, sys: &Sys) -> Step {

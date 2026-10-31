@@ -5,11 +5,11 @@ mod dotfiles;
 mod plan;
 mod pm;
 mod theme;
+mod wizard;
 
 use catalog::{CATEGORIES, Catalog};
 use clap::{Parser, Subcommand};
 use config::{Config, SHELLS};
-use dialoguer::{MultiSelect, Select};
 use plan::Method;
 use pm::Sys;
 use std::{
@@ -29,8 +29,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Escolhe perfis e módulos num menu, salva no devup.toml e aplica
-    Init,
+    /// Pergunta como você usa o PC, recomenda um setup, mostra o plano e aplica
+    Init {
+        /// Aceita as recomendações sem perguntar
+        #[arg(long, short)]
+        yes: bool,
+    },
     /// Converge a máquina para o devup.toml
     Apply {
         /// Usa um devup.toml de outro lugar (caminho ou URL) como o seu
@@ -129,24 +133,6 @@ fn list(cat: &Catalog, sys: &Sys, category: Option<String>, profile: Option<Stri
     Ok(())
 }
 
-fn menu(cat: &Catalog, selected: &[String]) -> Result<Vec<String>, String> {
-    let names: Vec<&String> = cat.profiles.keys().chain(cat.modules.iter().map(|m| &m.name)).collect();
-    let defaults: Vec<bool> = names.iter().map(|n| selected.contains(n)).collect();
-    let labels: Vec<String> = cat
-        .profiles
-        .iter()
-        .map(|(n, p)| format!("◆ perfil {n} — {}", p.description))
-        .chain(cat.modules.iter().map(|m| format!("[{}] {} — {}", m.category, m.name, m.description)))
-        .collect();
-    let picked = MultiSelect::new()
-        .with_prompt("Espaço seleciona, Enter confirma")
-        .items(&labels)
-        .defaults(&defaults)
-        .interact()
-        .map_err(|e| e.to_string())?;
-    Ok(picked.into_iter().map(|i| names[i].clone()).collect())
-}
-
 fn status(cat: &Catalog, sys: &Sys, cfg: &Config) -> Result<(), String> {
     for m in cfg.resolve(cat)? {
         let mark = match plan::installed(m, sys) {
@@ -237,29 +223,21 @@ fn restore(sys: &Sys, id: Option<String>, dry_run: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn pick_shell(current: Option<&str>) -> Result<Option<String>, String> {
-    let items: Vec<&str> = ["não mexer no shell"].into_iter().chain(SHELLS).collect();
-    let default = current.and_then(|c| items.iter().position(|i| *i == c)).unwrap_or(0);
-    let i = Select::new()
-        .with_prompt("Shell padrão")
-        .items(&items)
-        .default(default)
-        .interact()
-        .map_err(|e| e.to_string())?;
-    Ok((i > 0).then(|| items[i].to_string()))
-}
-
-fn pick_theme(current: Option<&str>) -> Result<Option<String>, String> {
-    let names = theme::names();
-    let items: Vec<&str> = ["não mexer no tema"].into_iter().chain(names.iter().map(String::as_str)).collect();
-    let default = current.and_then(|c| items.iter().position(|i| *i == c)).unwrap_or(0);
-    let i = Select::new()
-        .with_prompt("Tema")
-        .items(&items)
-        .default(default)
-        .interact()
-        .map_err(|e| e.to_string())?;
-    Ok((i > 0).then(|| items[i].to_string()))
+fn init(cat: &Catalog, sys: &Sys, current: Option<Config>, yes: bool, dry_run: bool) -> Result<ExitCode, String> {
+    let Some(out) = wizard::run(cat, sys, current, yes)? else {
+        println!("Nada foi alterado.");
+        return Ok(ExitCode::SUCCESS);
+    };
+    let code = apply(sys, &out.cfg, dry_run, true)?;
+    if let Some((name, email)) = out.git {
+        for (key, value) in [("user.name", name), ("user.email", email)] {
+            println!("→ git config --global {key} \"{value}\"");
+            if !dry_run && !Command::new("git").args(["config", "--global", key, &value]).status().is_ok_and(|s| s.success()) {
+                eprintln!("⚠ não deu para configurar {key} do git");
+            }
+        }
+    }
+    Ok(code)
 }
 
 const INSTALL_URL: &str = "https://raw.githubusercontent.com/bernardofernandezz/devup/main/install.sh";
@@ -349,16 +327,8 @@ fn main() -> ExitCode {
             Some(Cmd::Doctor) => Ok(doctor::run(&sys, &cat, current.as_ref())),
             Some(Cmd::Update) => update(dry_run),
             Some(Cmd::Restore { id }) => restore(&sys, id, dry_run).map(|_| ExitCode::SUCCESS),
-            Some(Cmd::Init) | None => {
-                let old = current.unwrap_or_default();
-                let mut cfg = Config::default();
-                menu(&cat, &old.names())?.iter().try_for_each(|n| cfg.add(&cat, n))?;
-                cfg.exclude = old.exclude;
-                cfg.dotfiles = old.dotfiles;
-                cfg.shell = pick_shell(old.shell.as_deref())?;
-                cfg.theme = pick_theme(old.theme.as_deref())?;
-                apply(&sys, &cfg, dry_run, true)
-            }
+            Some(Cmd::Init { yes }) => init(&cat, &sys, current, yes, dry_run),
+            None => init(&cat, &sys, current, false, dry_run),
         }
     })();
     result.unwrap_or_else(|e| {

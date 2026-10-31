@@ -25,7 +25,7 @@ pub fn state_dir() -> PathBuf {
 pub const SHELLS: [&str; 3] = ["zsh", "fish", "bash"];
 
 /// O setup desejado da máquina: `devup apply` converge para ele.
-#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub profiles: Vec<String>,

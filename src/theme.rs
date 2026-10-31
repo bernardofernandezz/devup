@@ -29,7 +29,7 @@ pub fn names() -> Vec<String> {
 }
 
 /// Cores do tema. Cada `#rrggbb` também vira `<nome>_raw` (sem `#`), para formatos como `rgb(...)` do Hyprland.
-fn palette(name: &str) -> Result<BTreeMap<String, String>, String> {
+pub fn palette(name: &str) -> Result<BTreeMap<String, String>, String> {
     let user = fs::read_to_string(user_dir().join(format!("{name}.toml"))).ok();
     let builtin = THEMES.get_file(format!("{name}.toml")).and_then(|f| f.contents_utf8()).map(String::from);
     let text = user.or(builtin).ok_or_else(|| format!("tema desconhecido: {name} (veja `devup theme list`)"))?;
