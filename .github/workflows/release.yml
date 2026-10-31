@@ -1,0 +1,30 @@
+# Ao dar push numa tag v*, gera binários estáticos (musl) e publica no Release.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: rustup target add ${{ matrix.arch }}-unknown-linux-musl
+      - run: cargo test
+      - run: cargo build --release --target ${{ matrix.arch }}-unknown-linux-musl
+      - run: cp target/${{ matrix.arch }}-unknown-linux-musl/release/devup devup-${{ matrix.arch }}-linux
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: devup-${{ matrix.arch }}-linux
