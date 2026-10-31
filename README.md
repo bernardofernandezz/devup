@@ -22,6 +22,7 @@ O seu setup fica em `~/.config/devup/devup.toml`:
 profiles = ["dev", "gaming"]
 modules = ["obsidian"]
 exclude = ["vscode"]   # não aplica, mesmo vindo de um perfil
+dotfiles = ["https://github.com/<você>/dotfiles"]
 ```
 
 ```sh
@@ -51,6 +52,23 @@ devup --dry-run install ...    # só mostra os comandos
 
 Perfis embutidos: `dev`, `gaming`, `essentials`, `server`, `full`.
 
+## Dotfiles
+
+Módulos como `tmux`, `starship` e `ghostty` já vêm com uma config padrão, aplicada por symlink. Para usar os seus:
+
+```sh
+devup dotfiles add https://github.com/<você>/dotfiles   # clona, registra no devup.toml e aplica
+devup dotfiles sync                                    # git pull em todos e reaplica
+devup restore [id]                                     # desfaz: devolve os arquivos substituídos
+```
+
+O repo é clonado em `~/.local/share/devup/dotfiles/<nome>` e pode ter dois formatos:
+
+- **stow**: cada pasta de topo é um pacote espelhado em `~` (`zsh/.zshrc` → `~/.zshrc`, `nvim/.config/nvim/init.lua` → `~/.config/nvim/init.lua`). É aplicado sempre.
+- **com `devup/*.toml`**: módulos e perfis próprios, com `files.src` relativo à raiz do repo. Use com `devup add`.
+
+Nada é apagado: o que existir no destino vai para `~/.local/state/devup/backups/<id>/`.
+
 ## Seus módulos e perfis
 
 Crie arquivos em `~/.config/devup/modules/*.toml`. Um módulo com o mesmo nome de um embutido o substitui.
@@ -76,10 +94,11 @@ script = "curl ... | sh"             # último fallback
 bin = "docker"                       # se já estiver no PATH, pula a instalação
 services = ["docker"]                # systemctl enable --now
 groups = ["docker"]                  # usermod -aG <grupo> $USER
+files = [{ src = "docker/daemon.json", dest = "~/.config/docker/daemon.json" }]  # src relativo à pasta do .toml
 run = ["echo pronto"]                # comandos pós-instalação (devem ser idempotentes)
 ```
 
-O catálogo embutido fica em `catalog/default.toml`.
+O catálogo embutido fica em `catalog/default.toml`, e as configs padrão em `catalog/assets/`.
 
 ## Publicar uma versão
 
