@@ -6,8 +6,8 @@ mod pm;
 
 use catalog::{CATEGORIES, Catalog};
 use clap::{Parser, Subcommand};
-use config::Config;
-use dialoguer::MultiSelect;
+use config::{Config, SHELLS};
+use dialoguer::{MultiSelect, Select};
 use plan::Method;
 use pm::Sys;
 use std::{
@@ -64,6 +64,11 @@ enum Cmd {
     Dotfiles {
         #[command(subcommand)]
         cmd: DotfilesCmd,
+    },
+    /// Define o shell padrão (instala, aplica a config e faz chsh)
+    Shell {
+        #[arg(value_parser = SHELLS)]
+        name: String,
     },
     /// Devolve os arquivos que o devup substituiu (o backup mais recente, ou o informado)
     Restore { id: Option<String> },
@@ -204,6 +209,18 @@ fn restore(sys: &Sys, id: Option<String>, dry_run: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn pick_shell(current: Option<&str>) -> Result<Option<String>, String> {
+    let items: Vec<&str> = ["não mexer no shell"].into_iter().chain(SHELLS).collect();
+    let default = current.and_then(|c| items.iter().position(|i| *i == c)).unwrap_or(0);
+    let i = Select::new()
+        .with_prompt("Shell padrão")
+        .items(&items)
+        .default(default)
+        .interact()
+        .map_err(|e| e.to_string())?;
+    Ok((i > 0).then(|| items[i].to_string()))
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let sys = Sys::detect();
@@ -251,6 +268,10 @@ fn main() -> ExitCode {
                 }
                 apply(&sys, &cfg, dry_run, false)
             }
+            Some(Cmd::Shell { name }) => {
+                let cfg = Config { shell: Some(name), ..current.unwrap_or_default() };
+                apply(&sys, &cfg, dry_run, true)
+            }
             Some(Cmd::Restore { id }) => restore(&sys, id, dry_run).map(|_| ExitCode::SUCCESS),
             Some(Cmd::Init) | None => {
                 let old = current.unwrap_or_default();
@@ -258,6 +279,7 @@ fn main() -> ExitCode {
                 menu(&cat, &old.names())?.iter().try_for_each(|n| cfg.add(&cat, n))?;
                 cfg.exclude = old.exclude;
                 cfg.dotfiles = old.dotfiles;
+                cfg.shell = pick_shell(old.shell.as_deref())?;
                 apply(&sys, &cfg, dry_run, true)
             }
         }

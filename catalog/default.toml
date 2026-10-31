@@ -143,6 +143,50 @@ script = "mkdir -p ~/.local/bin && curl -fsSL https://starship.rs/install.sh | s
 bin = "starship"
 files = [{ src = "starship/starship.toml", dest = "~/.config/starship.toml" }]
 
+# Shells: escolha um com `devup shell <nome>` (ou `shell = "..."` no devup.toml).
+[[module]]
+name = "shell-common"
+category = "shell"
+description = "Aliases comuns a zsh, bash e fish"
+requires = ["cli-tools", "starship"]
+files = [{ src = "shell/aliases.sh", dest = "~/.config/devup/shell/aliases.sh" }]
+
+[[module]]
+name = "zsh"
+category = "shell"
+description = "Zsh com autosuggestions, syntax highlighting, starship e zoxide"
+requires = ["shell-common"]
+pacman = "zsh zsh-autosuggestions zsh-syntax-highlighting"
+apt = "zsh zsh-autosuggestions zsh-syntax-highlighting"
+dnf = "zsh zsh-autosuggestions zsh-syntax-highlighting"
+zypper = "zsh"
+files = [{ src = "zsh/.zshrc", dest = "~/.zshrc" }]
+run = ['s="$(command -v zsh)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
+
+[[module]]
+name = "fish"
+category = "shell"
+description = "Fish com starship e zoxide"
+requires = ["shell-common"]
+pacman = "fish"
+apt = "fish"
+dnf = "fish"
+zypper = "fish"
+files = [{ src = "fish/config.fish", dest = "~/.config/fish/config.fish" }]
+run = ['s="$(command -v fish)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
+
+[[module]]
+name = "bash"
+category = "shell"
+description = "Bash com completion, starship e zoxide"
+requires = ["shell-common"]
+pacman = "bash bash-completion"
+apt = "bash bash-completion"
+dnf = "bash bash-completion"
+zypper = "bash bash-completion"
+files = [{ src = "bash/.bashrc", dest = "~/.bashrc" }]
+run = ['s="$(command -v bash)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
+
 # ---------- games ----------
 [[module]]
 name = "steam"

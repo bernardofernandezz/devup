@@ -170,4 +170,13 @@ mod tests {
         ]);
         fs::remove_dir_all(repo).unwrap();
     }
+
+    #[test]
+    fn builtin_files_exist_in_assets() {
+        for m in crate::catalog::Catalog::builtin().modules {
+            for f in &m.files {
+                assert!(ASSETS.get_file(&f.src).is_some(), "{}: asset {} não existe", m.name, f.src);
+            }
+        }
+    }
 }

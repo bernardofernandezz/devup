@@ -22,6 +22,8 @@ pub fn state_dir() -> PathBuf {
     xdg("XDG_STATE_HOME", ".local/state").join("devup")
 }
 
+pub const SHELLS: [&str; 3] = ["zsh", "fish", "bash"];
+
 /// O setup desejado da máquina: `devup apply` converge para ele.
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -32,6 +34,8 @@ pub struct Config {
     pub exclude: Vec<String>,
     /// Repos git de dotfiles, clonados em ~/.local/share/devup/dotfiles.
     pub dotfiles: Vec<String>,
+    /// Shell padrão do usuário: um de SHELLS.
+    pub shell: Option<String>,
 }
 
 impl Config {
@@ -94,7 +98,10 @@ impl Config {
     pub fn resolve<'a>(&self, cat: &'a Catalog) -> Result<Vec<&'a Module>, String> {
         // Repos no formato stow viram um módulo com o nome do repo, sempre aplicado.
         let stow = self.dotfiles.iter().map(|u| repo_name(u)).filter(|n| cat.module(n).is_some());
-        let names: Vec<String> = self.names().into_iter().chain(stow).collect();
+        if let Some(sh) = self.shell.as_ref().filter(|sh| !SHELLS.contains(&sh.as_str())) {
+            return Err(format!("shell inválido: {sh} (use {})", SHELLS.join(", ")));
+        }
+        let names: Vec<String> = self.names().into_iter().chain(self.shell.clone()).chain(stow).collect();
         Ok(cat.expand(&names)?.into_iter().filter(|m| !self.exclude.contains(&m.name)).collect())
     }
 }
@@ -137,5 +144,15 @@ mod tests {
         assert_eq!(repo_name("https://github.com/me/dotfiles.git"), "dotfiles");
         assert_eq!(repo_name("git@github.com:me/dots"), "dots");
         assert_eq!(repo_name("https://github.com/me/cfg/"), "cfg");
+    }
+
+    #[test]
+    fn shell_pulls_its_dependencies() {
+        let cat = Catalog::builtin();
+        let mut c = Config { shell: Some("zsh".into()), ..Default::default() };
+        let names: Vec<_> = c.resolve(&cat).unwrap().iter().map(|m| m.name.clone()).collect();
+        assert_eq!(names, ["cli-tools", "starship", "shell-common", "zsh"]);
+        c.shell = Some("tcsh".into());
+        assert!(c.resolve(&cat).is_err());
     }
 }
