@@ -9,6 +9,8 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 zstyle ':completion:*' menu select
 
 export PATH="$HOME/.local/bin:$PATH"
+# Linguagens instaladas pelo devup (node, go, rust…)
+[ -f "${XDG_DATA_HOME:-$HOME/.local/share}/devup/env.sh" ] && . "${XDG_DATA_HOME:-$HOME/.local/share}/devup/env.sh"
 export EDITOR=nvim
 
 # Caminhos mudam entre distros (Arch usa /usr/share/zsh/plugins).

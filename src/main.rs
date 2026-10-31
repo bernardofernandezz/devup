@@ -1,4 +1,7 @@
 mod catalog;
+mod detect;
+mod net;
+mod toolchains;
 mod config;
 mod doctor;
 mod dotfiles;
@@ -119,8 +122,27 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// Atualiza o devup para a última versão publicada
-    Update,
+    /// Linguagens direto das fontes oficiais: Node, Bun, Deno, Rust, Go, Zig, Python, Java, .NET, Flutter, Kotlin
+    Lang {
+        #[command(subcommand)]
+        cmd: LangCmd,
+    },
+    /// O que o devup detectou na máquina: hardware, sessão e linguagens já instaladas
+    Env {
+        /// Saída em JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Atualiza o devup: baixa, confere o checksum e troca o binário com segurança
+    #[command(after_help = "Exemplos:\n  devup update\n  devup update --check      só diz se há versão nova\n  devup update --rollback   volta para a versão anterior")]
+    Update {
+        /// Só verifica se há versão nova
+        #[arg(long)]
+        check: bool,
+        /// Volta para a versão anterior
+        #[arg(long, conflicts_with = "check")]
+        rollback: bool,
+    },
     /// Devolve os arquivos que o devup substituiu
     #[command(after_help = "Sem ID, abre a lista de backups (ou usa o mais recente, sem terminal).")]
     Restore {
@@ -136,6 +158,36 @@ enum Cmd {
     },
     #[command(name = "__update-check", hide = true)]
     UpdateCheck,
+}
+
+#[derive(Subcommand)]
+enum LangCmd {
+    /// Linguagens disponíveis, instaladas e as que já estão no PATH
+    List {
+        /// Saída em JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Instala da fonte oficial e registra no devup.toml
+    #[command(after_help = "Exemplos:\n  devup lang add node go bun\n  devup lang add node@22 java@21 python@3.12 rust@nightly\n  devup lang add       abre a lista\n\nVersões: lts, latest, stable, um major (22) ou exata (22.11.0), conforme a linguagem.")]
+    Add {
+        /// Linguagens, com versão opcional depois do @
+        #[arg(value_name = "LINGUAGEM[@VERSÃO]")]
+        specs: Vec<String>,
+    },
+    /// Troca a versão em uso (instala se faltar)
+    #[command(after_help = "Exemplos:\n  devup lang use node@20\n  devup lang use java@25")]
+    Use {
+        #[arg(value_name = "LINGUAGEM@VERSÃO")]
+        spec: String,
+    },
+    /// Remove uma versão (ou todas, sem @) e tira do devup.toml
+    Remove {
+        #[arg(value_name = "LINGUAGEM[@VERSÃO]")]
+        spec: String,
+    },
+    /// Instala as versões mais novas do que está no devup.toml
+    Update,
 }
 
 #[derive(Subcommand)]
@@ -173,7 +225,11 @@ fn main_help() -> String {
     let h = |s: &str| style(s).bold().underlined().to_string();
     let c = |s: &str| style(format!("{s:<18}")).cyan().to_string();
     let groups: [(&str, &[(&str, &str)]); 5] = [
-        ("Começar", &[("init", "Entende a máquina, recomenda um setup, mostra o plano e aplica"), ("doctor", "Diz o que está ok e o que corrigir")]),
+        ("Começar", &[
+            ("init", "Entende a máquina, recomenda um setup, mostra o plano e aplica"),
+            ("env", "O que o devup detectou na máquina"),
+            ("doctor", "Diz o que está ok e o que corrigir"),
+        ]),
         ("Seu setup (devup.toml)", &[
             ("apply", "Deixa a máquina igual ao devup.toml"),
             ("add", "Adiciona apps ou perfis e aplica"),
@@ -181,6 +237,7 @@ fn main_help() -> String {
             ("status", "O que já está instalado e o que falta"),
         ]),
         ("Personalizar", &[
+            ("lang", "Linguagens das fontes oficiais (node, rust, go, bun…)"),
             ("shell", "Define o shell padrão (zsh, fish, bash)"),
             ("theme", "Lista e troca o tema de cores"),
             ("dotfiles", "Usa os seus dotfiles de um repo git"),
@@ -408,7 +465,14 @@ fn status(cat: &Catalog, sys: &Sys, cfg: &Config, json: bool) -> Result<(), Erro
         };
         println!("{} {:<14}{}", mark.bold(), row.name, style(&m.description).dim());
     }
-    let missing = rows.iter().filter(|r| r.0.state == "missing").count();
+    for (id, spec) in &cfg.toolchains {
+        let (_, current) = toolchains::installed(id);
+        let ok = toolchains::is_installed(id);
+        let mark = if ok { style("✓").green() } else { style("✗").red() };
+        let what = current.map(|v| format!("{v} (pedido: {spec})")).unwrap_or_else(|| format!("pedido: {spec}"));
+        println!("{} {:<14}{}", mark.bold(), id, style(what).dim());
+    }
+    let missing = rows.iter().filter(|r| r.0.state == "missing").count() + cfg.toolchains.keys().filter(|id| !toolchains::is_installed(id)).count();
     if missing > 0 {
         ui::hint(&format!("{missing} faltando · devup apply instala"));
     }
@@ -496,7 +560,126 @@ fn apply(sys: &Sys, cfg: &Config, o: &Opts, persist: bool, confirm: bool) -> Res
     {
         theme::apply(t, true, o.dry_run)?;
     }
-    Ok(code)
+    let pending: Vec<(String, String)> = cfg.toolchains.iter().filter(|(id, _)| !toolchains::is_installed(id)).map(|(i, s)| (i.clone(), s.clone())).collect();
+    let langs = install_langs(&pending, o)?;
+    Ok(if code == ExitCode::SUCCESS { langs } else { code })
+}
+
+/// Instala linguagens das fontes oficiais e explica como usá-las já neste terminal.
+fn install_langs(reqs: &[(String, String)], o: &Opts) -> Result<ExitCode, Error> {
+    if reqs.is_empty() {
+        return Ok(ExitCode::SUCCESS);
+    }
+    let results = toolchains::ensure(reqs, toolchains::Platform::from(&detect::detect()), o.dry_run);
+    let mut failed = results.iter().filter(|r| r.result.is_err()).count();
+
+    // Binário oficial que não roda por falta de biblioteca do sistema: instala pela distro e testa de novo.
+    let broken: Vec<&toolchains::Outcome> = results.iter().filter(|r| r.broken.is_some()).collect();
+    if !broken.is_empty() {
+        let sys = Sys::detect();
+        let mut pkgs: Vec<String> = vec![];
+        if let Some(pm) = sys.pm {
+            for r in &broken {
+                pkgs.extend(toolchains::packages_for(r.broken.as_deref().unwrap_or_default(), pm).iter().map(|p| p.to_string()));
+            }
+        }
+        pkgs.sort();
+        pkgs.dedup();
+        if pkgs.is_empty() {
+            for r in &broken {
+                ui::error(&format!("{} não roda nesta máquina:", r.id));
+                for line in r.broken.as_deref().unwrap_or_default().lines().take(6) {
+                    eprintln!("    {}", style(line).dim());
+                }
+            }
+            failed += broken.len();
+        } else {
+            ui::hint(&format!("faltam bibliotecas do sistema: {}", pkgs.join(", ")));
+            let base = sys.install_base().expect("gerenciador detectado");
+            let mut steps: Vec<plan::Step> = vec![];
+            if let Some(refresh) = sys.refresh_cmd() {
+                steps.push(plan::Step::Cmd { verb: "Atualizando", what: "índice de pacotes".into(), cmd: refresh, hint: None });
+            }
+            steps.push(plan::Step::Packages { base, pkgs });
+            plan::run(&steps, &sys, false);
+            for r in &broken {
+                match toolchains::smoke(&r.id) {
+                    Ok(()) => ui::status("Pronto", &format!("{} agora roda", r.id)),
+                    Err(e) => {
+                        ui::error(&format!("{} ainda não roda: {}", r.id, e.lines().next().unwrap_or_default()));
+                        failed += 1;
+                    }
+                }
+            }
+        }
+    }
+    if !o.dry_run && failed < results.len() && !toolchains::on_path() {
+        ui::hint(&format!("Para usar neste terminal agora: . {}", toolchains::env_sh().display()));
+        ui::hint("As configs de shell do devup já carregam isso; em outro shell, adicione essa linha ao seu rc");
+    }
+    Ok(if failed == 0 { ExitCode::SUCCESS } else { ExitCode::FAILURE })
+}
+
+fn save_toolchains(cfg: &Config, o: &Opts) -> Result<(), Error> {
+    if o.dry_run { Ok(()) } else { cfg.save().map(|_| ()).map_err(Error::from) }
+}
+
+/// Plano curto para comandos de linguagem: o que vai acontecer e de onde vem.
+fn confirm_langs(title: &str, items: &[String], o: &Opts) -> Result<bool, Error> {
+    println!("\n{}", style("Plano").bold().underlined());
+    for item in items {
+        println!("  {} {item}", style(title).bold());
+    }
+    println!();
+    if o.dry_run || o.yes {
+        return Ok(true);
+    }
+    if !ui::interactive() {
+        return Err(Error::usage("sem terminal para confirmar; rode de novo com -y para aplicar sem perguntar"));
+    }
+    let opts = vec!["Aplicar".to_string(), "Cancelar".to_string()];
+    let go = ui::Ui::new().select("Aplicar?", &opts, &|i| opts[i].clone(), 0)? == 0;
+    if !go {
+        eprintln!("Cancelado. Nada foi alterado.");
+    }
+    Ok(go)
+}
+
+fn lang_list(cfg: &Config, json: bool) -> Result<(), Error> {
+    let tools = detect::tools();
+    let rows: Vec<serde_json::Value> = toolchains::LANGS
+        .iter()
+        .map(|l| {
+            let (versions, current) = toolchains::installed(l.id);
+            let in_path = tools.iter().find(|t| t.lang == l.id);
+            serde_json::json!({
+                "id": l.id, "name": l.name, "source": l.source,
+                "requested": cfg.toolchains.get(l.id), "installed": versions, "current": current,
+                "in_path": in_path.map(|t| serde_json::json!({"version": t.version, "source": t.source})),
+            })
+        })
+        .collect();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rows).unwrap());
+        return Ok(());
+    }
+    for (l, r) in toolchains::LANGS.iter().zip(&rows) {
+        // Python (uv) e Rust (rustup) não ficam na pasta de versões; no PATH via devup contam como nossos.
+        let via_devup = r["in_path"].as_object().filter(|t| t["source"] == "devup").and_then(|t| t["version"].as_str());
+        let ours = r["current"].as_str().or(via_devup);
+        let theirs = r["in_path"].as_object().filter(|t| t["source"] != "devup");
+        let mark = if ours.is_some() || theirs.is_some() { style("●").green() } else { style("○").dim() };
+        let now = match (ours, theirs) {
+            (Some(v), None) => format!("{v} via devup"),
+            (Some(v), Some(t)) => format!("{v} via devup (+{} via {})", t["version"].as_str().unwrap_or(""), t["source"].as_str().unwrap_or("")),
+            (None, Some(t)) => format!("{} via {}", t["version"].as_str().unwrap_or(""), t["source"].as_str().unwrap_or("")),
+            (None, None) => "não instalado".into(),
+        };
+        let asked = cfg.toolchains.get(l.id).map(|s| format!(" · no devup.toml: {s}")).unwrap_or_default();
+        println!("{} {:<8}{:<16}{:<26}{}", mark, style(l.id).bold(), l.name, now, style(format!("{}{asked}", l.source)).dim());
+    }
+    ui::hint("devup lang add <linguagem>[@versão] instala da fonte oficial");
+    Ok(())
 }
 
 fn install(cat: &Catalog, sys: &Sys, names: &[String], o: &Opts) -> Result<ExitCode, Error> {
@@ -585,7 +768,7 @@ fn run(cli: Cli, sys: &Sys) -> Result<ExitCode, Error> {
         None | Some(Cmd::Init) => init(&cat, sys, current, &o),
         Some(Cmd::List { category, profile, json }) => list(&cat, sys, category, profile, json).map(|_| ExitCode::SUCCESS),
         Some(Cmd::Status { json }) => status(&cat, sys, &need_config(current)?, json).map(|_| ExitCode::SUCCESS),
-        Some(Cmd::Doctor { json }) => Ok(doctor::run(sys, &cat, current.as_ref(), json)),
+        Some(Cmd::Doctor { json }) => Ok(doctor::run(sys, &cat, current.as_ref(), &detect::detect(), json)),
         Some(Cmd::Apply { from: Some(from) }) => apply(sys, &fetch_config(&from)?, &o, true, true),
         Some(Cmd::Apply { from: None }) => apply(sys, &need_config(current)?, &o, false, true),
         Some(Cmd::Install { mut names }) => {
@@ -697,7 +880,109 @@ fn run(cli: Cli, sys: &Sys) -> Result<ExitCode, Error> {
             theme::apply(&name, true, o.dry_run)?;
             Ok(ExitCode::SUCCESS)
         }
-        Some(Cmd::Update) => update::update(o.dry_run),
+        Some(Cmd::Update { check, rollback }) => update::update(o.dry_run, check, rollback),
+        Some(Cmd::Env { json }) => {
+            let env = detect::detect();
+            let tools = detect::tools();
+            if json {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "machine": env, "languages": tools })).unwrap());
+            } else {
+                let yes_no = |b: bool| if b { "sim" } else { "não" };
+                let rows = [
+                    ("distro", env.distro.clone().unwrap_or_else(|| "?".into())),
+                    ("pacotes", sys.pm.map_or("nenhum suportado".into(), |p| p.bin().to_string())),
+                    ("desktop", format!("{}{}", sys.desktop.unwrap_or("nenhum"), env.session.as_ref().map(|s| format!(" ({s})")).unwrap_or_default())),
+                    ("cpu", format!("{} · {} núcleos{}", env.arch, env.cpus, if env.avx2 { " · AVX2" } else { "" })),
+                    ("memória", format!("{} GB", env.mem_gb)),
+                    ("vídeo", if env.gpus.is_empty() { "não detectado".into() } else { env.gpus.join(", ") }),
+                    ("libc", if env.musl { "musl".into() } else { "glibc".into() }),
+                    ("notebook", yes_no(env.laptop).into()),
+                    ("WSL", yes_no(env.wsl).into()),
+                    ("container", yes_no(env.container).into()),
+                ];
+                for (k, v) in rows {
+                    println!("  {:<10}{v}", style(k).bold());
+                }
+                println!("\n{}", style("Linguagens no PATH").bold().underlined());
+                if tools.is_empty() {
+                    println!("  nenhuma · devup lang add instala das fontes oficiais");
+                }
+                for t in &tools {
+                    println!("  {:<8}{:<12}{}", style(t.lang).bold(), t.version, style(format!("via {} · {}", t.source, t.path.display())).dim());
+                }
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Some(Cmd::Lang { cmd }) => {
+            let mut cfg = current.unwrap_or_default();
+            match cmd {
+                LangCmd::List { json } => lang_list(&cfg, json).map(|_| ExitCode::SUCCESS),
+                LangCmd::Add { mut specs } => {
+                    if specs.is_empty() {
+                        let ui = ui::need_terminal("as linguagens, por exemplo: devup lang add node go")?;
+                        let tools = detect::tools();
+                        let items: Vec<String> = toolchains::LANGS
+                            .iter()
+                            .map(|l| match tools.iter().find(|t| t.lang == l.id) {
+                                Some(t) => format!("{:<16}{}", l.name, style(format!("já tem {} via {}", t.version, t.source)).dim()),
+                                None => format!("{:<16}{}", l.name, style(format!("{} · {}", l.default, l.source)).dim()),
+                            })
+                            .collect();
+                        let picked = ui.multi("Quais linguagens? (espaço marca)", &items, &|i| toolchains::LANGS[i].name.into(), &vec![false; items.len()])?;
+                        specs = picked.into_iter().map(|i| toolchains::LANGS[i].id.to_string()).collect();
+                    }
+                    let reqs: Vec<(String, String)> = specs.iter().map(|s| toolchains::parse_spec(s).map(|(l, v)| (l.id.to_string(), v))).collect::<Result<_, _>>()?;
+                    if reqs.is_empty() {
+                        return Ok(ExitCode::SUCCESS);
+                    }
+                    let items: Vec<String> = reqs.iter().map(|(id, v)| format!("{id} {v}  {}", style(format!("de {}", toolchains::lang(id).unwrap().source)).dim())).collect();
+                    if !confirm_langs("instalar", &items, &o)? {
+                        return Ok(ExitCode::SUCCESS);
+                    }
+                    cfg.toolchains.extend(reqs.iter().cloned());
+                    save_toolchains(&cfg, &o)?;
+                    install_langs(&reqs, &o)
+                }
+                LangCmd::Use { spec } => {
+                    let (l, v) = toolchains::parse_spec(&spec)?;
+                    cfg.toolchains.insert(l.id.to_string(), v.clone());
+                    save_toolchains(&cfg, &o)?;
+                    install_langs(&[(l.id.to_string(), v)], &o)
+                }
+                LangCmd::Remove { spec } => {
+                    let (id, version) = spec.split_once('@').map_or((spec.as_str(), None), |(i, v)| (i, Some(v)));
+                    let l = toolchains::lang(id).ok_or_else(|| toolchains::parse_spec(id).err().unwrap_or_default())?;
+                    let (versions, _) = toolchains::installed(l.id);
+                    let doomed: Vec<String> = match version {
+                        Some(v) if versions.iter().any(|x| x == v) => vec![v.to_string()],
+                        Some(v) => return Err(Error::usage(format!("{} {v} não está instalado{}", l.id, ui::did_you_mean(v, versions.iter().map(String::as_str))))),
+                        None => versions,
+                    };
+                    let items: Vec<String> = doomed.iter().map(|v| format!("{} {v}", l.id)).collect();
+                    if !items.is_empty() && !confirm_langs("remover", &items, &o)? {
+                        return Ok(ExitCode::SUCCESS);
+                    }
+                    for v in &doomed {
+                        if !o.dry_run {
+                            toolchains::remove(l.id, v)?;
+                        }
+                        ui::status("Removido", &format!("{} {v}", l.id));
+                    }
+                    if version.is_none() {
+                        cfg.toolchains.remove(l.id);
+                        save_toolchains(&cfg, &o)?;
+                    }
+                    Ok(ExitCode::SUCCESS)
+                }
+                LangCmd::Update => {
+                    let reqs: Vec<(String, String)> = cfg.toolchains.iter().map(|(i, s)| (i.clone(), s.clone())).collect();
+                    if reqs.is_empty() {
+                        return Err(Error::usage("nenhuma linguagem no devup.toml · devup lang add node go"));
+                    }
+                    install_langs(&reqs, &o)
+                }
+            }
+        }
         Some(Cmd::Restore { id }) => restore(sys, id, o.dry_run).map(|_| ExitCode::SUCCESS),
         Some(Cmd::Completions { shell }) => {
             clap_complete::generate(shell, &mut command(), "devup", &mut io::stdout());
@@ -739,7 +1024,7 @@ fn main() -> ExitCode {
         &cli.cmd,
         Some(Cmd::List { json: true, .. } | Cmd::Status { json: true } | Cmd::Doctor { json: true } | Cmd::Theme { cmd: ThemeCmd::List { json: true } })
     );
-    let notify = !json && !matches!(&cli.cmd, Some(Cmd::Update | Cmd::Completions { .. } | Cmd::UpdateCheck));
+    let notify = !json && !matches!(&cli.cmd, Some(Cmd::Update { .. } | Cmd::Completions { .. } | Cmd::UpdateCheck | Cmd::Env { json: true } | Cmd::Lang { cmd: LangCmd::List { json: true } }));
 
     let sys = Sys::detect();
     if sys.pm.is_none() && !json {

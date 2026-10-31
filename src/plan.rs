@@ -5,10 +5,10 @@ use crate::pm::{Sys, strs};
 use crate::theme;
 use crate::ui::{self, Level};
 use console::style;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use std::{
     fmt, fs,
-    io::{self, IsTerminal, Write},
+    io::Write,
     path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
     thread,
@@ -269,11 +269,11 @@ fn rotate(dir: &Path, keep: usize) {
 }
 
 fn spinner(verb: &str, label: &str) -> Option<ProgressBar> {
-    if ui::level() != Level::Normal || !io::stderr().is_terminal() {
+    if !ui::animated() {
         return None;
     }
     let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::with_template("{prefix:>12.green.bold} {msg} {spinner:.cyan} {elapsed:.dim}").unwrap());
+    pb.set_style(ui::spinner_style());
     pb.set_prefix(verb.to_string());
     pb.set_message(label.to_string());
     pb.enable_steady_tick(Duration::from_millis(90));

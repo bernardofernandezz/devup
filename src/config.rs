@@ -38,6 +38,8 @@ pub struct Config {
     pub shell: Option<String>,
     /// Tema: embutido ou ~/.config/devup/themes/<nome>.toml.
     pub theme: Option<String>,
+    /// Linguagens das fontes oficiais: `node = "lts"`, `go = "latest"`, `rust = "stable"`…
+    pub toolchains: std::collections::BTreeMap<String, String>,
 }
 
 impl Config {

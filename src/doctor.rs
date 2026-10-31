@@ -1,6 +1,7 @@
 use crate::catalog::Catalog;
 use crate::config::{Config, home, repo_name};
 use crate::dotfiles::{backups, is_linked, repos_dir};
+use crate::detect::Env;
 use crate::pm::{Pm, Sys};
 use crate::plan::succeeds;
 use crate::{pm::strs, theme};
@@ -16,8 +17,8 @@ pub struct Check {
 }
 
 /// Diagnóstico da máquina: ✓ ok, - aviso (o devup contorna), ✗ problema que impede algo.
-pub fn run(sys: &Sys, cat: &Catalog, cfg: Option<&Config>, json: bool) -> ExitCode {
-    let checks = checks(sys, cat, cfg);
+pub fn run(sys: &Sys, cat: &Catalog, cfg: Option<&Config>, env: &Env, json: bool) -> ExitCode {
+    let checks = checks(sys, cat, cfg, env);
     if json {
         println!("{}", serde_json::to_string_pretty(&checks).unwrap());
     } else {
@@ -33,7 +34,7 @@ pub fn run(sys: &Sys, cat: &Catalog, cfg: Option<&Config>, json: bool) -> ExitCo
     if checks.iter().any(|c| c.level == "error") { ExitCode::FAILURE } else { ExitCode::SUCCESS }
 }
 
-fn checks(sys: &Sys, cat: &Catalog, cfg: Option<&Config>) -> Vec<Check> {
+fn checks(sys: &Sys, cat: &Catalog, cfg: Option<&Config>, env: &Env) -> Vec<Check> {
     let mut out = vec![];
     let mut line = |ok: Option<bool>, message: String| {
         let level = match ok {
@@ -71,12 +72,24 @@ fn checks(sys: &Sys, cat: &Catalog, cfg: Option<&Config>) -> Vec<Check> {
     } else {
         line(None, "flathub (usuário) ainda não configurado (o devup adiciona quando precisar)".into());
     }
+    if env.gpus.contains(&"NVIDIA") && !env.nvidia_driver && !env.wsl {
+        let how = match sys.pm {
+            Some(Pm::Pacman) => "pacman -S nvidia-open (ou nvidia-open-dkms)",
+            Some(Pm::Apt) => "sudo ubuntu-drivers install (Ubuntu) ou o pacote nvidia-driver (Debian)",
+            Some(Pm::Dnf) => "os drivers do RPM Fusion (akmod-nvidia)",
+            _ => "o driver proprietário da sua distro",
+        };
+        line(None, format!("placa NVIDIA sem o driver proprietário carregado; para jogos e CUDA, instale {how}"));
+    }
+    if env.wsl {
+        line(None, "WSL detectado: módulos de desktop e serviços são pulados".into());
+    }
     if !has("systemctl") {
         line(None, "sem systemd: `services` dos módulos serão ignorados".into());
     }
     for bin in ["git", "curl"] {
         if !has(bin) {
-            line(Some(false), format!("{bin} não encontrado (usado por dotfiles, scripts e update)"));
+            line(Some(false), format!("{bin} não encontrado (usado por dotfiles e scripts de instalação)"));
         }
     }
     let local_bin = home().join(".local/bin");
@@ -111,6 +124,14 @@ fn checks(sys: &Sys, cat: &Catalog, cfg: Option<&Config>) -> Vec<Check> {
                 line(None, format!("{} não é do devup (`devup apply` substitui com backup)", f.dest));
             }
         }
+    }
+    for (id, spec) in &cfg.toolchains {
+        if !crate::toolchains::is_installed(id) {
+            line(Some(false), format!("linguagem {id} ({spec}) no devup.toml, mas não instalada · devup apply"));
+        }
+    }
+    if !cfg.toolchains.is_empty() && !crate::toolchains::on_path() {
+        line(Some(false), format!("as linguagens do devup não estão no PATH deste shell · . {}", crate::toolchains::env_sh().display()));
     }
     let theme_name = cfg.theme.as_deref().unwrap_or(theme::DEFAULT);
     match theme::current_dir().exists() {

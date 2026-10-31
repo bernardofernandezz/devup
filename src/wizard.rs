@@ -1,5 +1,7 @@
 use crate::catalog::Catalog;
 use crate::config::{Config, SHELLS};
+use crate::detect::{self, Env, Tool};
+use crate::toolchains;
 use crate::plan;
 use crate::pm::Sys;
 use crate::theme;
@@ -37,9 +39,8 @@ impl Use {
     }
 }
 
-/// (rótulo, módulo, binário que mostra que a linguagem já é usada)
-const LANGS: [(&str, &str, &str); 4] =
-    [("JavaScript / Node", "nodejs", "node"), ("Python", "python", "pip3"), ("Rust", "rustup", "cargo"), ("Go", "go", "go")];
+/// Módulos de linguagem das versões antigas do assistente; viraram linguagens oficiais (`[toolchains]`).
+const OLD_LANG_MODULES: [&str; 4] = ["nodejs", "python", "rustup", "go"];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Editor {
@@ -62,8 +63,11 @@ pub struct Signals {
     pub desktop: bool,
     /// Módulos dos perfis de uso que já estão instalados.
     pub installed: Vec<String>,
-    /// Binários de linguagens e editores encontrados no PATH.
+    /// Editores encontrados no PATH (code, nvim).
     pub bins: Vec<String>,
+    /// Linguagens já no PATH, com versão e origem.
+    pub tools: Vec<Tool>,
+    pub env: Env,
     /// Shell de login, só o nome (bash, zsh…).
     pub shell: Option<String>,
     pub git_identity: bool,
@@ -94,12 +98,12 @@ pub fn detect(cat: &Catalog, sys: &Sys) -> Signals {
         .filter(|m| plan::installed_pkg(m, sys) == Some(true))
         .map(|m| m.name.clone())
         .collect();
-    let bins = ["node", "pip3", "cargo", "go", "code", "nvim"].into_iter().filter(|b| (sys.has)(b)).map(String::from).collect();
+    let bins = ["code", "nvim"].into_iter().filter(|b| (sys.has)(b)).map(String::from).collect();
     let git_identity = Command::new("git")
         .args(["config", "--global", "user.name"])
         .output()
         .is_ok_and(|o| !o.stdout.trim_ascii().is_empty());
-    Signals { desktop: sys.desktop.is_some(), installed, bins, shell: login_shell(sys), git_identity }
+    Signals { desktop: sys.desktop.is_some(), installed, bins, shell: login_shell(sys), git_identity, tools: detect::tools(), env: detect::detect() }
 }
 
 pub fn login_shell(sys: &Sys) -> Option<String> {
@@ -120,10 +124,10 @@ fn hint(u: Use, sig: &Signals, cat: &Catalog) -> Option<String> {
         .filter(|m| sig.installed.contains(&m.name) && m.name != "discord") // discord não indica que a pessoa joga
         .map(|m| m.name.as_str())
         .collect();
-    let langs: Vec<&str> = LANGS.iter().filter(|l| sig.bins.iter().any(|b| b == l.2)).map(|l| l.0).collect();
+    let langs: Vec<String> = sig.tools.iter().map(|t| format!("{} {}", t.lang, t.version)).collect();
     match u {
         Use::Dev if installed.len() >= 2 || !langs.is_empty() => {
-            let found: Vec<&str> = installed.iter().copied().chain(langs).take(3).collect();
+            let found: Vec<String> = installed.iter().map(|s| s.to_string()).chain(langs).take(3).collect();
             Some(format!("{} já por aqui", found.join(", ")))
         }
         Use::Games if !installed.is_empty() => Some(format!("{} já instalado", installed.iter().take(3).copied().collect::<Vec<_>>().join(", "))),
@@ -138,7 +142,7 @@ pub fn recommend(sig: &Signals, cat: &Catalog, current: Option<&Config>) -> Answ
         let ex = |m: &str| c.exclude.iter().any(|e| e == m);
         return Answers {
             uses: Use::ALL.into_iter().filter(|u| c.profiles.iter().any(|p| p == u.profile())).collect(),
-            langs: LANGS.iter().map(|l| l.1.to_string()).filter(|m| c.modules.contains(m)).collect(),
+            langs: c.toolchains.keys().cloned().collect(),
             editor: match (ex("neovim"), ex("vscode")) {
                 (true, true) => Editor::Neither,
                 (false, true) => Editor::Neovim,
@@ -156,7 +160,8 @@ pub fn recommend(sig: &Signals, cat: &Catalog, current: Option<&Config>) -> Answ
     let has = |b: &str| sig.bins.iter().any(|x| x == b);
     Answers {
         uses,
-        langs: LANGS.iter().filter(|l| has(l.2)).map(|l| l.1.to_string()).collect(),
+        // Sem nenhuma linguagem na máquina, Node e Python cobrem o começo da maioria; quem já tem não ganha duplicata.
+        langs: if sig.tools.is_empty() { vec!["node".into(), "python".into()] } else { vec![] },
         editor: match (has("nvim"), has("code")) {
             (true, false) => Editor::Neovim,
             (false, true) => Editor::VsCode,
@@ -173,17 +178,21 @@ pub fn recommend(sig: &Signals, cat: &Catalog, current: Option<&Config>) -> Answ
 /// Monta o devup.toml a partir das respostas, preservando o que o assistente não controla.
 pub fn to_config(a: &Answers, base: &Config, desktop: bool) -> Config {
     let use_profiles: Vec<&str> = Use::ALL.iter().map(|u| u.profile()).chain(["desktop"]).collect();
-    let lang_mods: Vec<&str> = LANGS.iter().map(|l| l.1).collect();
     let mut cfg = Config { shell: a.shell.clone(), theme: a.theme.clone(), ..base.clone() };
     cfg.profiles.retain(|p| !use_profiles.contains(&p.as_str()));
     cfg.profiles.extend(a.uses.iter().map(|u| u.profile().to_string()));
     if desktop && a.uses.iter().any(|u| *u != Use::Server) {
         cfg.profiles.push("desktop".into());
     }
-    cfg.modules.retain(|m| !lang_mods.contains(&m.as_str()));
+    cfg.modules.retain(|m| !OLD_LANG_MODULES.contains(&m.as_str()));
     cfg.exclude.retain(|m| m != "neovim" && m != "vscode");
     if a.uses.contains(&Use::Dev) {
-        cfg.modules.extend(a.langs.iter().cloned());
+        cfg.toolchains = a
+            .langs
+            .iter()
+            .filter_map(|id| toolchains::lang(id))
+            .map(|l| (l.id.to_string(), base.toolchains.get(l.id).cloned().unwrap_or_else(|| l.default.to_string())))
+            .collect();
         cfg.exclude.extend(
             match a.editor {
                 Editor::Both => &[][..],
@@ -223,7 +232,7 @@ fn header(sys: &Sys, sig: &Signals) {
         sig.shell.as_ref().map(|s| format!("shell {s}")),
     ];
     let line = parts.into_iter().flatten().collect::<Vec<_>>().join(" · ");
-    println!("\n{}  {}\n", style("devup").bold().magenta(), style(line).dim());
+    eprintln!("{}  {}\n{}  {}\n", style("devup").bold().magenta(), style(line).dim(), " ".repeat(5), style(sig.env.summary()).dim());
 }
 
 fn ask_uses(ui: &Ui, a: &mut Answers, sig: &Signals, cat: &Catalog) -> Result<(), Error> {
@@ -244,15 +253,19 @@ fn ask_dev(ui: &Ui, a: &mut Answers, sig: &Signals) -> Result<(), Error> {
     if !a.uses.contains(&Use::Dev) {
         return Ok(());
     }
-    let items: Vec<String> = LANGS
+    let items: Vec<String> = toolchains::LANGS
         .iter()
-        .map(|l| match sig.bins.iter().any(|b| b == l.2) {
-            true => format!("{:<22}{}", l.0, style(format!("{} encontrado", l.2)).dim()),
-            false => l.0.to_string(),
+        .map(|l| match sig.tools.iter().find(|t| t.lang == l.id) {
+            Some(t) => format!("{:<16}{}", l.name, style(format!("{} via {}", t.version, t.source)).dim()),
+            None => format!("{:<16}{}", l.name, style(format!("de {}", l.source)).dim()),
         })
         .collect();
-    let defaults: Vec<bool> = LANGS.iter().map(|l| a.langs.iter().any(|m| m == l.1)).collect();
-    a.langs = ui.multi("Quais linguagens?", &items, &|i| LANGS[i].0.into(), &defaults)?.into_iter().map(|i| LANGS[i].1.to_string()).collect();
+    let defaults: Vec<bool> = toolchains::LANGS.iter().map(|l| a.langs.iter().any(|m| m == l.id)).collect();
+    a.langs = ui
+        .multi("Quais linguagens? (direto das fontes oficiais)", &items, &|i| toolchains::LANGS[i].name.into(), &defaults)?
+        .into_iter()
+        .map(|i| toolchains::LANGS[i].id.to_string())
+        .collect();
 
     let items: Vec<String> = EDITORS.iter().map(|e| e.1.to_string()).collect();
     let default = EDITORS.iter().position(|e| e.0 == a.editor).unwrap_or(0);
@@ -344,6 +357,19 @@ fn adjust(ui: &Ui, cat: &Catalog, cfg: Config) -> Result<Config, Error> {
     })
 }
 
+/// WSL e containers podem ter variáveis de desktop, mas não um desktop para configurar.
+fn real_desktop(sig: &Signals) -> bool {
+    sig.desktop && !sig.env.wsl && !sig.env.container
+}
+
+/// Ajustes pelo hardware: notebook ganha perfis de energia.
+fn with_hardware(mut cfg: Config, sig: &Signals) -> Config {
+    if sig.env.laptop && !cfg.modules.iter().any(|m| m == "power") {
+        cfg.modules.push("power".into());
+    }
+    cfg
+}
+
 /// Linhas de shell e tema do plano, comparando com o que a máquina usa hoje.
 pub fn changes(cfg: &Config, login_shell: Option<&str>) -> Changes {
     let shell = match (login_shell, cfg.shell.as_deref()) {
@@ -353,13 +379,17 @@ pub fn changes(cfg: &Config, login_shell: Option<&str>) -> Changes {
         (Some(_), Some(_)) => None,
     };
     let theme = cfg.theme.clone().filter(|t| theme::current().as_ref() != Some(t));
-    Changes { shell, theme }
+    let langs = cfg.toolchains.iter().filter(|(id, _)| !toolchains::is_installed(id)).map(|(id, spec)| format!("{id} {spec}")).collect();
+    Changes { shell, theme, langs }
 }
 
 /// O assistente do `devup init`. Retorna None se o usuário cancelar.
 pub fn run(cat: &Catalog, sys: &Sys, current: Option<Config>, yes: bool) -> Result<Option<Outcome>, Error> {
     if !yes && !ui::interactive() {
         return Err(Error::usage("o init é interativo; use `devup init -y` para aceitar as recomendações, ou `devup apply`"));
+    }
+    if !yes {
+        ui::splash("seu Linux inteiro em um comando");
     }
     eprintln!("{}", style("Analisando sua máquina…").dim());
     let sig = detect(cat, sys);
@@ -371,7 +401,7 @@ pub fn run(cat: &Catalog, sys: &Sys, current: Option<Config>, yes: bool) -> Resu
 
     let mut cfg = match (&current, yes) {
         (Some(c), true) => c.clone(),
-        (None, true) => to_config(&ans, &base, sig.desktop),
+        (None, true) => with_hardware(to_config(&ans, &base, real_desktop(&sig)), &sig),
         (current, false) => {
             let step = match current {
                 Some(c) => {
@@ -385,7 +415,7 @@ pub fn run(cat: &Catalog, sys: &Sys, current: Option<Config>, yes: bool) -> Resu
                 1 => {
                     ask_uses(&ui, &mut ans, &sig, cat)?;
                     ask_dev(&ui, &mut ans, &sig)?;
-                    to_config(&ans, &base, sig.desktop)
+                    with_hardware(to_config(&ans, &base, real_desktop(&sig)), &sig)
                 }
                 2 => {
                     ask_shell(&ui, &mut ans, &sig)?;
@@ -403,7 +433,7 @@ pub fn run(cat: &Catalog, sys: &Sys, current: Option<Config>, yes: bool) -> Resu
                     ask_shell(&ui, &mut ans, &sig)?;
                     ask_theme(&ui, &mut ans)?;
                     git = ask_git(&ui, &ans, &sig)?;
-                    to_config(&ans, &Config { dotfiles: base.dotfiles.clone(), ..Default::default() }, sig.desktop)
+                    with_hardware(to_config(&ans, &Config { dotfiles: base.dotfiles.clone(), ..Default::default() }, real_desktop(&sig)), &sig)
                 }
             }
         }
@@ -431,7 +461,14 @@ mod tests {
     use crate::pm::Pm;
 
     fn sig(desktop: bool, installed: &[&str], bins: &[&str], shell: &str) -> Signals {
+        let tools = if bins.contains(&"cargo") {
+            vec![Tool { lang: "rust", version: "1.99.1".into(), source: "rustup", path: "/x".into() }]
+        } else {
+            vec![]
+        };
         Signals {
+            tools,
+            env: Env::default(),
             desktop,
             installed: installed.iter().map(|s| s.to_string()).collect(),
             bins: bins.iter().map(|s| s.to_string()).collect(),
@@ -446,10 +483,11 @@ mod tests {
         let r = recommend(&sig(true, &[], &[], "bash"), &cat, None);
         assert_eq!(r.uses, [Use::Dev, Use::Daily]);
         assert_eq!(r.shell.as_deref(), Some("zsh"));
+        assert_eq!(r.langs, ["node", "python"]);
 
         let r = recommend(&sig(true, &["steam", "lutris"], &["cargo", "code"], "fish"), &cat, None);
         assert_eq!(r.uses, [Use::Dev, Use::Games, Use::Daily]);
-        assert_eq!(r.langs, ["rustup"]);
+        assert!(r.langs.is_empty(), "quem já tem Rust via rustup não ganha duplicata");
         assert_eq!(r.editor, Editor::VsCode);
         assert_eq!(r.shell.as_deref(), Some("fish"));
 
@@ -460,7 +498,13 @@ mod tests {
     #[test]
     fn recommends_from_existing_config() {
         let cat = Catalog::builtin();
-        let c = Config { profiles: vec!["gaming".into()], modules: vec!["go".into()], exclude: vec!["vscode".into()], shell: Some("fish".into()), ..Default::default() };
+        let c = Config {
+            profiles: vec!["gaming".into()],
+            toolchains: [("go".to_string(), "latest".to_string())].into(),
+            exclude: vec!["vscode".into()],
+            shell: Some("fish".into()),
+            ..Default::default()
+        };
         let r = recommend(&sig(true, &[], &[], "bash"), &cat, Some(&c));
         assert_eq!((r.uses, r.langs, r.editor, r.shell.as_deref()), (vec![Use::Games], vec!["go".to_string()], Editor::Neovim, Some("fish")));
     }
@@ -471,21 +515,23 @@ mod tests {
             profiles: vec!["meu-setup".into(), "gaming".into()],
             modules: vec!["obsidian".into(), "nodejs".into()],
             dotfiles: vec!["https://x/dots".into()],
+            toolchains: [("node".to_string(), "22".to_string())].into(),
             ..Default::default()
         };
         let a = Answers {
             uses: vec![Use::Dev, Use::Daily],
-            langs: vec!["python".into()],
+            langs: vec!["python".into(), "node".into()],
             editor: Editor::Neovim,
             shell: Some("zsh".into()),
             theme: Some("nord".into()),
         };
         let c = to_config(&a, &base, true);
         assert_eq!(c.profiles, ["meu-setup", "dev", "essentials", "desktop"]);
-        assert_eq!(c.modules, ["obsidian", "python"]);
+        assert_eq!(c.modules, ["obsidian"]);
+        // node mantém a versão que já estava pedida; python entra com a padrão
+        assert_eq!(c.toolchains, [("node".to_string(), "22".to_string()), ("python".to_string(), "3.13".to_string())].into());
         assert_eq!(c.exclude, ["vscode"]);
         assert_eq!((c.shell.as_deref(), c.theme.as_deref(), c.dotfiles.len()), (Some("zsh"), Some("nord"), 1));
-        Catalog::builtin().module("python").unwrap();
 
         let server_only = Answers { uses: vec![Use::Server], ..a };
         let c = to_config(&server_only, &Config::default(), true);

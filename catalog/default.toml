@@ -255,6 +255,17 @@ run = ['s="$(command -v bash)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" =
 # ---------- desktop ----------
 # `desktop = [...]`: o módulo só se aplica se esse for o desktop em uso (XDG_CURRENT_DESKTOP).
 [[module]]
+name = "power"
+category = "desktop"
+description = "Perfis de energia (economia, equilibrado, desempenho) para notebook"
+skip_if = "! ls /sys/class/power_supply/BAT* >/dev/null 2>&1"  # sem bateria, não é notebook
+pacman = "power-profiles-daemon"
+apt = "power-profiles-daemon"
+dnf = "tuned-ppd"
+zypper = "power-profiles-daemon"
+services = ["power-profiles-daemon"]
+
+[[module]]
 name = "fonts"
 category = "desktop"
 description = "JetBrainsMono Nerd Font + emoji"
