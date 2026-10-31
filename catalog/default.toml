@@ -1,4 +1,4 @@
-# Catálogo do devup. Ordem de instalação: nativo (pacman/apt/dnf/zypper) → aur (paru/yay) → flatpak → script.
+# Catálogo do devup. Ordem de instalação: nativo (pacman/apt/dnf/zypper/apk/xbps) → aur (paru/yay) → flatpak → script.
 # Vários pacotes nativos podem ser separados por espaço. `bin`: se já estiver no PATH, a instalação é pulada.
 # Depois da instalação: `services` (systemctl enable --now), `groups` (usermod -aG) e `run` (sh -c, idempotente).
 # `files`: links para ~ (src relativo a catalog/assets/); o que existir no destino vai para backup.
@@ -38,6 +38,8 @@ pacman = "git"
 apt = "git"
 dnf = "git"
 zypper = "git"
+apk = "git"
+xbps = "git"
 bin = "git"
 
 [[module]]
@@ -48,6 +50,8 @@ pacman = "neovim"
 apt = "neovim"
 dnf = "neovim"
 zypper = "neovim"
+apk = "neovim"
+xbps = "neovim"
 flatpak = "io.neovim.nvim"
 
 [[module]]
@@ -58,6 +62,8 @@ pacman = "docker docker-compose"
 apt = "docker.io docker-compose"
 dnf = "moby-engine docker-compose"
 zypper = "docker docker-compose"
+apk = "docker docker-cli-compose"
+xbps = "docker docker-compose"
 services = ["docker"]
 groups = ["docker"]
 
@@ -69,6 +75,8 @@ requires = ["git"]
 pacman = "lazygit"
 apt = "lazygit"
 zypper = "lazygit"
+apk = "lazygit"
+xbps = "lazygit"
 
 [[module]]
 name = "cli-tools"
@@ -78,6 +86,8 @@ pacman = "ripgrep fzf fd bat zoxide"
 apt = "ripgrep fzf fd-find bat zoxide"
 dnf = "ripgrep fzf fd-find bat zoxide"
 zypper = "ripgrep fzf fd bat zoxide"
+apk = "ripgrep fzf fd bat zoxide"
+xbps = "ripgrep fzf fd bat zoxide"
 
 [[module]]
 name = "btop"
@@ -87,6 +97,8 @@ pacman = "btop"
 apt = "btop"
 dnf = "btop"
 zypper = "btop"
+apk = "btop"
+xbps = "btop"
 
 [[module]]
 name = "nodejs"
@@ -94,7 +106,9 @@ category = "dev"
 description = "Node.js + npm"
 pacman = "nodejs npm"
 apt = "nodejs npm"
-dnf = "nodejs npm"
+dnf = "nodejs nodejs-npm"
+apk = "nodejs npm"
+xbps = "nodejs"
 
 [[module]]
 name = "mise"
@@ -135,6 +149,8 @@ pacman = "kitty"
 apt = "kitty"
 dnf = "kitty"
 zypper = "kitty"
+apk = "kitty"
+xbps = "kitty"
 files = [{ src = "kitty/kitty.conf", dest = "~/.config/kitty/kitty.conf" }]
 
 [[module]]
@@ -145,6 +161,8 @@ pacman = "tmux"
 apt = "tmux"
 dnf = "tmux"
 zypper = "tmux"
+apk = "tmux"
+xbps = "tmux"
 files = [{ src = "tmux/tmux.conf", dest = "~/.config/tmux/tmux.conf" }]
 
 [[module]]
@@ -153,6 +171,8 @@ category = "shell"
 description = "Prompt rápido para qualquer shell"
 pacman = "starship"
 zypper = "starship"
+apk = "starship"
+xbps = "starship"
 script = "mkdir -p ~/.local/bin && curl -fsSL https://starship.rs/install.sh | sh -s -- -y -b ~/.local/bin"
 bin = "starship"
 files = [{ src = "starship/starship.toml", dest = "~/.config/starship.toml" }]
@@ -174,6 +194,8 @@ pacman = "zsh zsh-autosuggestions zsh-syntax-highlighting"
 apt = "zsh zsh-autosuggestions zsh-syntax-highlighting"
 dnf = "zsh zsh-autosuggestions zsh-syntax-highlighting"
 zypper = "zsh"
+apk = "zsh zsh-autosuggestions zsh-syntax-highlighting"
+xbps = "zsh zsh-autosuggestions zsh-syntax-highlighting"
 files = [{ src = "zsh/.zshrc", dest = "~/.zshrc" }]
 run = ['s="$(command -v zsh)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
 
@@ -186,6 +208,8 @@ pacman = "fish"
 apt = "fish"
 dnf = "fish"
 zypper = "fish"
+apk = "fish"
+xbps = "fish-shell"
 files = [{ src = "fish/config.fish", dest = "~/.config/fish/config.fish" }]
 run = ['s="$(command -v fish)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
 
@@ -198,6 +222,8 @@ pacman = "bash bash-completion"
 apt = "bash bash-completion"
 dnf = "bash bash-completion"
 zypper = "bash bash-completion"
+apk = "bash bash-completion"
+xbps = "bash bash-completion"
 files = [{ src = "bash/.bashrc", dest = "~/.bashrc" }]
 run = ['s="$(command -v bash)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
 
@@ -236,7 +262,6 @@ desktop = ["hyprland"]
 skip_if = "[ -d /usr/share/omarchy ] || [ -d ~/.local/share/omarchy ]"  # o Omarchy já gerencia o Hyprland
 requires = ["fonts", "kitty"]
 pacman = "hyprland hypridle hyprlock waybar fuzzel mako swaybg grim slurp wl-clipboard brightnessctl pavucontrol"
-apt = "hyprland waybar fuzzel mako-notifier swaybg grim slurp wl-clipboard brightnessctl pavucontrol"
 dnf = "hyprland waybar fuzzel mako swaybg grim slurp wl-clipboard brightnessctl pavucontrol"
 zypper = "hyprland hypridle hyprlock waybar fuzzel mako swaybg grim slurp wl-clipboard brightnessctl pavucontrol"
 files = [
@@ -325,6 +350,8 @@ description = "Navegador"
 pacman = "firefox"
 dnf = "firefox"
 zypper = "MozillaFirefox"
+apk = "firefox"
+xbps = "firefox"
 flatpak = "org.mozilla.firefox"
 
 [[module]]
@@ -357,6 +384,8 @@ pacman = "vlc"
 apt = "vlc"
 dnf = "vlc"
 zypper = "vlc"
+apk = "vlc"
+xbps = "vlc"
 flatpak = "org.videolan.VLC"
 
 [[module]]

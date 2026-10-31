@@ -10,6 +10,8 @@ pub enum Pm {
     Apt,
     Dnf,
     Zypper,
+    Apk,
+    Xbps,
 }
 
 impl Pm {
@@ -19,12 +21,14 @@ impl Pm {
             Pm::Apt => "apt-get",
             Pm::Dnf => "dnf",
             Pm::Zypper => "zypper",
+            Pm::Apk => "apk",
+            Pm::Xbps => "xbps-install",
         }
     }
 
     /// Detecta pelo binário instalado, o que cobre derivadas (Manjaro, Mint, Pop, Nobara...).
     fn detect(has: fn(&str) -> bool) -> Option<Pm> {
-        [Pm::Pacman, Pm::Apt, Pm::Dnf, Pm::Zypper]
+        [Pm::Pacman, Pm::Apt, Pm::Dnf, Pm::Zypper, Pm::Apk, Pm::Xbps]
             .into_iter()
             .find(|p| has(p.bin()))
     }
@@ -64,20 +68,22 @@ impl Sys {
         (!self.root).then_some("sudo").into_iter().chain(cmd.iter().copied()).map(String::from).collect()
     }
 
-    pub fn install_cmds(&self, pkgs: &[&str]) -> Vec<Vec<String>> {
-        let Some(pm) = self.pm else { return vec![] };
-        let base: &[&str] = match pm {
+    /// Comando de atualizar o índice de pacotes, se o gerenciador precisar antes de instalar.
+    pub fn refresh_cmd(&self) -> Option<Vec<String>> {
+        (self.pm == Some(Pm::Apt)).then(|| self.sudo(&["apt-get", "update"]))
+    }
+
+    /// Comando de instalação sem os pacotes.
+    pub fn install_base(&self) -> Option<Vec<String>> {
+        let base: &[&str] = match self.pm? {
             Pm::Pacman => &["pacman", "-S", "--needed", "--noconfirm"],
             Pm::Apt => &["apt-get", "install", "-y"],
             Pm::Dnf => &["dnf", "install", "-y"],
             Pm::Zypper => &["zypper", "--non-interactive", "install"],
+            Pm::Apk => &["apk", "add"],
+            Pm::Xbps => &["xbps-install", "-Sy"],
         };
-        let mut cmds = Vec::new();
-        if pm == Pm::Apt {
-            cmds.push(self.sudo(&["apt-get", "update"]));
-        }
-        cmds.push(self.sudo(&[base, pkgs].concat()));
-        cmds
+        Some(self.sudo(base))
     }
 
     pub fn has_packages(&self, pkgs: &[String]) -> bool {
@@ -85,6 +91,9 @@ impl Sys {
             Some(Pm::Pacman) => &["pacman", "-Q"],
             Some(Pm::Apt) => &["dpkg", "-s"],
             Some(Pm::Dnf | Pm::Zypper) => &["rpm", "-q"],
+            Some(Pm::Apk) => &["apk", "info", "-e"],
+            // xbps-query consulta um pacote por vez.
+            Some(Pm::Xbps) => return pkgs.iter().all(|p| crate::plan::succeeds(&strs(&["xbps-query", p]))),
             None => return false,
         };
         crate::plan::succeeds(&[strs(query), pkgs.to_vec()].concat())
@@ -104,4 +113,17 @@ pub fn has_bin(name: &str) -> bool {
 
 pub fn strs(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_commands_per_manager() {
+        let sys = |pm| Sys { pm: Some(pm), root: true, user: None, has: |_| false, home: "/h".into(), desktop: None };
+        assert_eq!(sys(Pm::Apk).install_base(), Some(strs(&["apk", "add"])));
+        assert_eq!(sys(Pm::Xbps).install_base(), Some(strs(&["xbps-install", "-Sy"])));
+        assert!(sys(Pm::Apt).refresh_cmd().is_some() && sys(Pm::Dnf).refresh_cmd().is_none());
+    }
 }

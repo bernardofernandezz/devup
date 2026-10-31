@@ -38,6 +38,8 @@ pub struct Module {
     pub apt: Option<String>,
     pub dnf: Option<String>,
     pub zypper: Option<String>,
+    pub apk: Option<String>,
+    pub xbps: Option<String>,
     pub aur: Option<String>,
     pub flatpak: Option<String>,
     pub script: Option<String>,
@@ -81,12 +83,14 @@ impl Module {
             Pm::Apt => &self.apt,
             Pm::Dnf => &self.dnf,
             Pm::Zypper => &self.zypper,
+            Pm::Apk => &self.apk,
+            Pm::Xbps => &self.xbps,
         }
         .as_deref()
     }
 
     pub fn has_install(&self) -> bool {
-        [&self.pacman, &self.apt, &self.dnf, &self.zypper, &self.aur, &self.flatpak, &self.script]
+        [&self.pacman, &self.apt, &self.dnf, &self.zypper, &self.apk, &self.xbps, &self.aur, &self.flatpak, &self.script]
             .iter()
             .any(|f| f.is_some())
     }

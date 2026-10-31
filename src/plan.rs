@@ -12,6 +12,8 @@ use std::{
 #[derive(Debug, PartialEq)]
 pub enum Step {
     Cmd(Vec<String>),
+    /// Instalação em grupo; se falhar, tenta pacote por pacote para só os inexistentes falharem.
+    Packages { base: Vec<String>, pkgs: Vec<String> },
     Link { src: PathBuf, dest: PathBuf },
 }
 
@@ -19,6 +21,7 @@ impl fmt::Display for Step {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Step::Cmd(c) => write!(f, "{}", c.join(" ")),
+            Step::Packages { base, pkgs } => write!(f, "{} {}", base.join(" "), pkgs.join(" ")),
             Step::Link { src, dest } => write!(f, "link {} -> {}", dest.display(), src.display()),
         }
     }
@@ -126,25 +129,31 @@ pub fn plan(mods: &[&Module], sys: &Sys) -> Vec<Step> {
         post.extend(m.run.iter().map(|r| Step::Cmd(strs(&["sh", "-c", r]))));
     }
 
-    let mut cmds = vec![];
+    let mut steps = vec![];
     if !flatpak.is_empty() && !(sys.has)("flatpak") {
         native.push("flatpak");
     }
-    if !native.is_empty() {
-        cmds.extend(sys.install_cmds(&native));
+    if let (Some(base), false) = (sys.install_base(), native.is_empty()) {
+        steps.extend(sys.refresh_cmd().map(Step::Cmd));
+        steps.push(Step::Packages { base, pkgs: strs(&native) });
     }
     if let (Some(helper), false) = (sys.aur_helper(), aur.is_empty()) {
-        cmds.push(strs(&[&[helper, "-S", "--needed", "--noconfirm"], &aur[..]].concat()));
+        steps.push(Step::Packages { base: strs(&[helper, "-S", "--needed", "--noconfirm"]), pkgs: strs(&aur) });
     }
     if !flatpak.is_empty() {
-        cmds.push(strs(&[
+        steps.push(Step::Cmd(strs(&[
             "flatpak", "remote-add", "--user", "--if-not-exists", "flathub",
             "https://dl.flathub.org/repo/flathub.flatpakrepo",
-        ]));
-        cmds.push(strs(&[&["flatpak", "install", "--user", "-y", "flathub"], &flatpak[..]].concat()));
+        ])));
+        steps.push(Step::Packages { base: strs(&["flatpak", "install", "--user", "-y", "flathub"]), pkgs: strs(&flatpak) });
     }
-    cmds.extend(scripts.into_iter().map(|s| strs(&["sh", "-c", s])));
-    cmds.into_iter().map(Step::Cmd).chain(post).collect()
+    steps.extend(scripts.into_iter().map(|s| Step::Cmd(strs(&["sh", "-c", s]))));
+    steps.extend(post);
+    steps
+}
+
+fn exec(cmd: &[String]) -> bool {
+    Command::new(&cmd[0]).args(&cmd[1..]).status().is_ok_and(|s| s.success())
 }
 
 pub fn run(steps: &[Step], sys: &Sys, dry_run: bool) -> ExitCode {
@@ -166,7 +175,21 @@ pub fn run(steps: &[Step], sys: &Sys, dry_run: bool) -> ExitCode {
             continue;
         }
         let ok = match step {
-            Step::Cmd(cmd) => Command::new(&cmd[0]).args(&cmd[1..]).status().is_ok_and(|s| s.success()),
+            Step::Cmd(cmd) => exec(cmd),
+            Step::Packages { base, pkgs } => {
+                let all = exec(&[base.clone(), pkgs.clone()].concat());
+                if !all && pkgs.len() > 1 {
+                    println!("  falhou em grupo; tentando um por um");
+                    for p in pkgs {
+                        let cmd = [base.clone(), vec![p.clone()]].concat();
+                        if !exec(&cmd) {
+                            failed.push(cmd.join(" "));
+                        }
+                    }
+                }
+                // Com mais de um pacote, as falhas individuais já foram registradas acima.
+                all || pkgs.len() > 1
+            }
             Step::Link { src, dest } => dotfiles::link(src, dest, &sys.home, &backup)
                 .inspect(|moved| backed_up |= moved)
                 .inspect_err(|e| eprintln!("  {e}"))
@@ -198,7 +221,14 @@ mod tests {
     }
 
     fn as_cmds(steps: Vec<Step>) -> Vec<Vec<String>> {
-        steps.into_iter().map(|s| match s { Step::Cmd(c) => c, Step::Link { .. } => panic!("link inesperado") }).collect()
+        steps
+            .into_iter()
+            .map(|s| match s {
+                Step::Cmd(c) => c,
+                Step::Packages { base, pkgs } => [base, pkgs].concat(),
+                Step::Link { .. } => panic!("link inesperado"),
+            })
+            .collect()
     }
 
     #[test]
@@ -241,7 +271,7 @@ mod tests {
         let cat = Catalog::builtin();
         let tmux = cat.module("tmux").unwrap();
         let steps = plan(&[tmux], &sys(Some(Pm::Apt), false, |_| false));
-        assert!(matches!(&steps[0], Step::Cmd(c) if c[1] == "apt-get"));
+        assert!(matches!(&steps[1], Step::Packages { base, .. } if base[1] == "apt-get"));
         assert_eq!(steps.last().unwrap(), &Step::Link {
             src: tmux.root.join("tmux/tmux.conf"),
             dest: "/h/.config/tmux/tmux.conf".into(),

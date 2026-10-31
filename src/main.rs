@@ -1,5 +1,6 @@
 mod catalog;
 mod config;
+mod doctor;
 mod dotfiles;
 mod plan;
 mod pm;
@@ -76,6 +77,10 @@ enum Cmd {
         #[command(subcommand)]
         cmd: ThemeCmd,
     },
+    /// Verifica a máquina e o devup.toml e diz o que corrigir
+    Doctor,
+    /// Atualiza o devup para a última versão publicada
+    Update,
     /// Devolve os arquivos que o devup substituiu (o backup mais recente, ou o informado)
     Restore { id: Option<String> },
 }
@@ -257,11 +262,29 @@ fn pick_theme(current: Option<&str>) -> Result<Option<String>, String> {
     Ok((i > 0).then(|| items[i].to_string()))
 }
 
+const INSTALL_URL: &str = "https://raw.githubusercontent.com/bernardofernandezz/devup/main/install.sh";
+
+/// Roda o install.sh de novo, no mesmo diretório do binário atual.
+fn update(dry_run: bool) -> Result<ExitCode, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dir = exe.parent().ok_or("binário sem diretório")?;
+    println!("→ curl -fsSL {INSTALL_URL} | DEVUP_BIN_DIR={} sh", dir.display());
+    if dry_run {
+        return Ok(ExitCode::SUCCESS);
+    }
+    let ok = Command::new("sh")
+        .args(["-c", "curl -fsSL \"$0\" | sh", INSTALL_URL])
+        .env("DEVUP_BIN_DIR", dir)
+        .status()
+        .is_ok_and(|s| s.success());
+    if ok { Ok(ExitCode::SUCCESS) } else { Err("falha ao atualizar".into()) }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let sys = Sys::detect();
     if sys.pm.is_none() {
-        eprintln!("⚠ Nenhum gerenciador suportado (pacman/apt/dnf/zypper); usando só flatpak e scripts");
+        eprintln!("⚠ Nenhum gerenciador suportado (pacman/apt/dnf/zypper/apk/xbps); usando só flatpak e scripts");
     }
 
     let result = (|| {
@@ -323,6 +346,8 @@ fn main() -> ExitCode {
                 theme::apply(&name, true, dry_run)?;
                 Ok(ExitCode::SUCCESS)
             }
+            Some(Cmd::Doctor) => Ok(doctor::run(&sys, &cat, current.as_ref())),
+            Some(Cmd::Update) => update(dry_run),
             Some(Cmd::Restore { id }) => restore(&sys, id, dry_run).map(|_| ExitCode::SUCCESS),
             Some(Cmd::Init) | None => {
                 let old = current.unwrap_or_default();
