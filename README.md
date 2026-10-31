@@ -23,6 +23,7 @@ profiles = ["dev", "gaming"]
 modules = ["obsidian"]
 exclude = ["vscode"]   # não aplica, mesmo vindo de um perfil
 dotfiles = ["https://github.com/<você>/dotfiles"]
+shell = "zsh"          # zsh | fish | bash
 ```
 
 ```sh
@@ -51,6 +52,14 @@ devup --dry-run install ...    # só mostra os comandos
 ```
 
 Perfis embutidos: `dev`, `gaming`, `essentials`, `server`, `full`.
+
+## Shell
+
+```sh
+devup shell zsh   # ou fish / bash: instala, linka a config, starship + zoxide + fzf, e faz chsh
+```
+
+Os três shells carregam os mesmos aliases (`~/.config/devup/shell/aliases.sh`). As configs são links, então suas customizações vão em `~/.config/devup/shell/local.sh` (zsh/bash) ou `local.fish`.
 
 ## Dotfiles
 
