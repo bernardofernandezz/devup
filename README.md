@@ -21,7 +21,29 @@ curl -fsSL https://raw.githubusercontent.com/bernardofernandezz/devup/main/insta
 devup init
 ```
 
-O `init` abre um menu: você marca perfis e apps, escolhe shell e tema, e o devup resolve o resto. Ele detecta a distro e o desktop, escolhe o melhor jeito de instalar cada coisa, linka as configs e recarrega o que estiver aberto.
+O `init` olha a máquina antes de perguntar: distro, desktop, shell, o que já está instalado e as linguagens que você usa. Depois faz poucas perguntas, todas já respondidas com a recomendação e o motivo, e mostra o plano antes de mexer em qualquer coisa:
+
+```
+devup  Arch Linux · pacman · hyprland · shell bash
+
+✔ Para que você usa este computador? · Programar, Jogar, Apps do dia a dia
+✔ Quais linguagens? · JavaScript / Node, Rust
+✔ Editor? · Neovim + VS Code
+✔ Qual shell? · zsh
+✔ Qual tema? · nord
+
+Plano
+  instalar     9  steam, lutris, heroic, firefox, spotify, zsh +3
+  já tem      16  git, neovim, docker, lazygit, cli-tools, btop +10
+  pular        3  gnome, kde, niri  (não se aplicam aqui)
+  configs      5  arquivos linkados · 1 para backup: ~/.zshrc
+  shell           bash → zsh
+  tema            nord
+
+? Tudo certo? ›  Aplicar · Ajustar apps · Cancelar
+```
+
+Com um setup já existente, o init pergunta só o que você quer mudar. `devup init --yes` aceita as recomendações sem perguntar nada.
 
 ## Por que
 
@@ -59,7 +81,7 @@ dotfiles = ["https://github.com/<você>/dotfiles"]
 
 | Comando | O que faz |
 |---|---|
-| `devup` / `devup init` | Menu interativo: perfis, apps, shell e tema. Salva e aplica |
+| `devup` / `devup init [--yes]` | Entende a máquina, recomenda, mostra o plano e aplica |
 | `devup apply` | Deixa a máquina igual ao `devup.toml` |
 | `devup apply --from <arquivo\|url>` | Usa o setup de outra máquina (validado antes de salvar) |
 | `devup add <app\|perfil>…` | Adiciona e aplica |

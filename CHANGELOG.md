@@ -2,6 +2,25 @@
 
 Todas as mudanças relevantes do devup. Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/), versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.2.0] - 2026-10-31
+
+O `devup init` agora entende a sua máquina em vez de mostrar uma lista com 43 opções.
+
+### Init inteligente
+
+- **Detecta antes de perguntar**: distro, desktop, shell atual, apps e linguagens que você já usa e se o git já tem nome configurado.
+- **Poucas perguntas, já respondidas**: para que você usa o PC (programar, jogar, dia a dia, servidor), linguagens, editor, shell e tema. Cada uma vem marcada com a recomendação e o motivo, por exemplo "cargo encontrado" ou "desktop detectado".
+- **Plano antes de agir**: o que vai instalar, o que você já tem, o que é pulado nesta máquina, quais configs vão para backup e a troca de shell e tema. Uma confirmação: Aplicar, Ajustar apps ou Cancelar.
+- **Já tem um setup?** O init pergunta o que você quer mudar (uso, shell ou tema) e mantém o resto, inclusive o que você adicionou à mão.
+- **Prévia dos temas** com as cores reais no terminal.
+- **Identidade do git**: se faltar, o init pergunta nome e e-mail.
+- **`devup init --yes`** aceita as recomendações sem perguntar, para scripts e máquinas novas.
+
+### Catálogo
+
+- Novos módulos `python` e `go`, conferidos nos repositórios das 6 distros.
+- `nodejs` é pulado se o `node` já estiver no PATH (via mise, por exemplo), e `rustup` não é instalado por cima de um Rust instalado de outro jeito.
+
 ## [0.1.0] - 2026-10-31
 
 Primeira versão: um comando para deixar qualquer distro Linux pronta para trabalhar e jogar.
@@ -38,4 +57,5 @@ Binários estáticos para `x86_64` e `aarch64`, que rodam em qualquer distro. O 
 - Em Alpine e Void (sem systemd), os `services` dos módulos não são habilitados.
 - A detecção de desktop usa `XDG_CURRENT_DESKTOP`: via SSH ou TTY, os módulos de desktop são pulados.
 
+[0.2.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.2.0
 [0.1.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.1.0
