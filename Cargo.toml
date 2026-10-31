@@ -2,6 +2,11 @@
 name = "devup"
 version = "0.1.0"
 edition = "2024"
+description = "Seu Linux inteiro em um comando: apps, dotfiles, shell, tema e desktop, em qualquer distro"
+repository = "https://github.com/bernardofernandezz/devup"
+readme = "README.md"
+keywords = ["linux", "dotfiles", "setup", "cli", "provisioning"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }

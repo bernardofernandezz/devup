@@ -18,7 +18,7 @@ use std::{
 };
 
 #[derive(Parser)]
-#[command(version, about = "Configura seu Linux estilo Omarchy, em qualquer distro")]
+#[command(version, about = "Seu Linux inteiro em um comando: apps, dotfiles, shell, tema e desktop, em qualquer distro")]
 struct Cli {
     /// Só mostra os comandos, sem executar
     #[arg(long, global = true)]

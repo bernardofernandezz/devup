@@ -14,7 +14,7 @@ pkill -USR1 -x kitty
 pkill -USR2 -x ghostty
 pkill -USR2 -x waybar
 tmux source-file ~/.config/tmux/tmux.conf 2>/dev/null
-# Só troca o wallpaper do swaybg se a config do Hyprland/Niri for a do devup (não mexe no Omarchy, por exemplo).
+# Só troca o wallpaper do swaybg se a config do Hyprland/Niri for a do devup (não mexe em setups gerenciados por outra ferramenta).
 if grep -qs "^# devup\|^// devup" ~/.config/hypr/hyprland.conf ~/.config/niri/config.kdl && pgrep -x swaybg >/dev/null; then
   pkill -x swaybg
   setsid swaybg -m fill -i "$wall" >/dev/null 2>&1 &

@@ -1,5 +1,5 @@
 #!/bin/sh
-# devup: GNOME estilo Omarchy: tema escuro, 6 workspaces fixos, Super+1..6, Super+Q fecha, Super+Enter abre o terminal.
+# devup: GNOME com tema escuro, 6 workspaces fixos, Super+1..6, Super+Q fecha, Super+Enter abre o terminal.
 set -e
 g() { gsettings set "$@"; }
 
