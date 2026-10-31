@@ -1,5 +1,6 @@
 mod catalog;
 mod config;
+mod dotfiles;
 mod plan;
 mod pm;
 
@@ -59,6 +60,21 @@ enum Cmd {
         #[arg(required = true)]
         names: Vec<String>,
     },
+    /// Seus dotfiles num repo git
+    Dotfiles {
+        #[command(subcommand)]
+        cmd: DotfilesCmd,
+    },
+    /// Devolve os arquivos que o devup substituiu (o backup mais recente, ou o informado)
+    Restore { id: Option<String> },
+}
+
+#[derive(Subcommand)]
+enum DotfilesCmd {
+    /// Clona o repo, registra no devup.toml e aplica
+    Add { url: String },
+    /// git pull em todos os repos e reaplica
+    Sync,
 }
 
 fn list(cat: &Catalog, sys: &Sys, category: Option<String>, profile: Option<String>) -> Result<(), String> {
@@ -135,9 +151,7 @@ fn fetch_config(from: &str) -> Result<Config, String> {
     toml::from_str(&text).map_err(|e| format!("{from}: {e}"))
 }
 
-fn load_config() -> Result<Config, String> {
-    Config::load()?.ok_or_else(|| "nenhum devup.toml ainda; rode `devup init`".into())
-}
+const NO_CONFIG: &str = "nenhum devup.toml ainda; rode `devup init`";
 
 fn save(cfg: &Config, dry_run: bool) -> Result<(), String> {
     if dry_run {
@@ -148,8 +162,46 @@ fn save(cfg: &Config, dry_run: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn apply(cat: &Catalog, sys: &Sys, cfg: &Config, dry_run: bool) -> Result<ExitCode, String> {
-    Ok(plan::run(&plan::plan(&cfg.resolve(cat)?, sys), dry_run))
+fn clone_missing(urls: &[String], dry_run: bool) -> Result<(), String> {
+    for url in urls {
+        let dir = dotfiles::repos_dir().join(config::repo_name(url));
+        if dir.exists() {
+            continue;
+        }
+        println!("→ git clone {url} {}", dir.display());
+        if !dry_run && !Command::new("git").args(["clone", url]).arg(&dir).status().is_ok_and(|s| s.success()) {
+            return Err(format!("falha ao clonar {url}"));
+        }
+    }
+    Ok(())
+}
+
+/// Clona os repos, valida o config contra o catálogo completo e só então salva (se `persist`) e executa.
+fn apply(sys: &Sys, cfg: &Config, dry_run: bool, persist: bool) -> Result<ExitCode, String> {
+    clone_missing(&cfg.dotfiles, dry_run)?;
+    let cat = Catalog::load(&cfg.dotfiles)?;
+    let mods = cfg.resolve(&cat)?;
+    if persist {
+        save(cfg, dry_run)?;
+    }
+    Ok(plan::run(&plan::plan(&mods, sys), sys, dry_run))
+}
+
+fn restore(sys: &Sys, id: Option<String>, dry_run: bool) -> Result<(), String> {
+    let ids = dotfiles::backups();
+    let id = id.or_else(|| ids.last().cloned()).ok_or("nenhum backup")?;
+    let dir = dotfiles::backups_dir().join(&id);
+    if !ids.contains(&id) {
+        return Err(format!("backup {id} não existe; disponíveis: {}", ids.join(", ")));
+    }
+    if dry_run {
+        dotfiles::backup_entries(&dir).iter().for_each(|e| println!("→ restaurar ~/{e}"));
+        return Ok(());
+    }
+    for path in dotfiles::restore(&dir, &sys.home).map_err(|e| e.to_string())? {
+        println!("✓ {}", path.display());
+    }
+    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -159,39 +211,57 @@ fn main() -> ExitCode {
         eprintln!("⚠ Nenhum gerenciador suportado (pacman/apt/dnf/zypper); usando só flatpak e scripts");
     }
 
-    let result = Catalog::load().and_then(|cat| match cli.cmd {
-        Some(Cmd::List { category, profile }) => list(&cat, &sys, category, profile).map(|_| ExitCode::SUCCESS),
-        Some(Cmd::Install { names }) => Ok(plan::run(&plan::plan(&cat.expand(&names)?, &sys), cli.dry_run)),
-        Some(Cmd::Status) => status(&cat, &sys, &load_config()?).map(|_| ExitCode::SUCCESS),
-        Some(Cmd::Apply { from: Some(from) }) => {
-            let cfg = fetch_config(&from)?;
-            cfg.resolve(&cat)?;
-            save(&cfg, cli.dry_run)?;
-            apply(&cat, &sys, &cfg, cli.dry_run)
+    let result = (|| {
+        let current = Config::load()?;
+        let cat = Catalog::load(current.as_ref().map_or(&[][..], |c| &c.dotfiles))?;
+        let dry_run = cli.dry_run;
+        match cli.cmd {
+            Some(Cmd::List { category, profile }) => list(&cat, &sys, category, profile).map(|_| ExitCode::SUCCESS),
+            Some(Cmd::Install { names }) => Ok(plan::run(&plan::plan(&cat.expand(&names)?, &sys), &sys, dry_run)),
+            Some(Cmd::Status) => status(&cat, &sys, &current.ok_or(NO_CONFIG)?).map(|_| ExitCode::SUCCESS),
+            Some(Cmd::Apply { from: Some(from) }) => apply(&sys, &fetch_config(&from)?, dry_run, true),
+            Some(Cmd::Apply { from: None }) => apply(&sys, &current.ok_or(NO_CONFIG)?, dry_run, false),
+            Some(Cmd::Add { names }) => {
+                let mut cfg = current.unwrap_or_default();
+                names.iter().try_for_each(|n| cfg.add(&cat, n))?;
+                apply(&sys, &cfg, dry_run, true)
+            }
+            Some(Cmd::Remove { names }) => {
+                let mut cfg = current.ok_or(NO_CONFIG)?;
+                names.iter().try_for_each(|n| cfg.remove(&cat, n))?;
+                save(&cfg, dry_run)?;
+                println!("  (nada foi desinstalado)");
+                Ok(ExitCode::SUCCESS)
+            }
+            Some(Cmd::Dotfiles { cmd: DotfilesCmd::Add { url } }) => {
+                let mut cfg = current.unwrap_or_default();
+                if !cfg.dotfiles.contains(&url) {
+                    cfg.dotfiles.push(url);
+                }
+                apply(&sys, &cfg, dry_run, true)
+            }
+            Some(Cmd::Dotfiles { cmd: DotfilesCmd::Sync }) => {
+                let cfg = current.ok_or(NO_CONFIG)?;
+                for url in &cfg.dotfiles {
+                    let dir = dotfiles::repos_dir().join(config::repo_name(url));
+                    println!("→ git -C {} pull --ff-only", dir.display());
+                    if !dry_run && !Command::new("git").arg("-C").arg(&dir).args(["pull", "--ff-only"]).status().is_ok_and(|s| s.success()) {
+                        return Err(format!("falha ao atualizar {url}"));
+                    }
+                }
+                apply(&sys, &cfg, dry_run, false)
+            }
+            Some(Cmd::Restore { id }) => restore(&sys, id, dry_run).map(|_| ExitCode::SUCCESS),
+            Some(Cmd::Init) | None => {
+                let old = current.unwrap_or_default();
+                let mut cfg = Config::default();
+                menu(&cat, &old.names())?.iter().try_for_each(|n| cfg.add(&cat, n))?;
+                cfg.exclude = old.exclude;
+                cfg.dotfiles = old.dotfiles;
+                apply(&sys, &cfg, dry_run, true)
+            }
         }
-        Some(Cmd::Apply { from: None }) => apply(&cat, &sys, &load_config()?, cli.dry_run),
-        Some(Cmd::Add { names }) => {
-            let mut cfg = Config::load()?.unwrap_or_default();
-            names.iter().try_for_each(|n| cfg.add(&cat, n))?;
-            save(&cfg, cli.dry_run)?;
-            apply(&cat, &sys, &cfg, cli.dry_run)
-        }
-        Some(Cmd::Remove { names }) => {
-            let mut cfg = load_config()?;
-            names.iter().try_for_each(|n| cfg.remove(&cat, n))?;
-            save(&cfg, cli.dry_run)?;
-            println!("  (nada foi desinstalado)");
-            Ok(ExitCode::SUCCESS)
-        }
-        Some(Cmd::Init) | None => {
-            let old = Config::load()?.unwrap_or_default();
-            let mut cfg = Config::default();
-            menu(&cat, &old.names())?.iter().try_for_each(|n| cfg.add(&cat, n))?;
-            cfg.exclude = old.exclude;
-            save(&cfg, cli.dry_run)?;
-            apply(&cat, &sys, &cfg, cli.dry_run)
-        }
-    });
+    })();
     result.unwrap_or_else(|e| {
         eprintln!("✗ {e}");
         ExitCode::FAILURE

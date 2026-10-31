@@ -1,0 +1,22 @@
+# devup: prompt enxuto em uma linha
+add_newline = false
+format = "$directory$git_branch$git_status$nodejs$rust$golang$python$cmd_duration$character"
+
+[directory]
+truncation_length = 3
+style = "bold blue"
+
+[git_branch]
+format = "[$branch]($style) "
+style = "purple"
+
+[git_status]
+format = "[$all_status$ahead_behind]($style) "
+
+[cmd_duration]
+min_time = 2000
+format = "[$duration]($style) "
+
+[character]
+success_symbol = "[❯](green)"
+error_symbol = "[❯](red)"

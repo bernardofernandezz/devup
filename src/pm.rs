@@ -1,4 +1,8 @@
-use std::{env, fs, os::unix::fs::MetadataExt, path::Path};
+use std::{
+    env, fs,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Pm {
@@ -32,6 +36,7 @@ pub struct Sys {
     pub root: bool,
     pub user: Option<String>,
     pub has: fn(&str) -> bool,
+    pub home: PathBuf,
 }
 
 impl Sys {
@@ -41,6 +46,7 @@ impl Sys {
             root: fs::metadata("/proc/self").is_ok_and(|m| m.uid() == 0),
             user: env::var("USER").ok(),
             has: has_bin,
+            home: crate::config::home(),
         }
     }
 

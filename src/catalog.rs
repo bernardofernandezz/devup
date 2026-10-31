@@ -1,7 +1,12 @@
-use crate::config::config_dir;
+use crate::config::{config_dir, repo_name};
+use crate::dotfiles::{assets_dir, repos_dir, stow_files};
 use crate::pm::Pm;
 use serde::Deserialize;
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Component, Path, PathBuf},
+};
 
 const DEFAULT: &str = include_str!("../catalog/default.toml");
 pub const CATEGORIES: [&str; 8] = ["dev", "games", "general", "server", "shell", "desktop", "theme", "dotfiles"];
@@ -15,7 +20,7 @@ pub struct Catalog {
     pub profiles: BTreeMap<String, Profile>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Module {
     pub name: String,
@@ -37,6 +42,19 @@ pub struct Module {
     pub groups: Vec<String>,
     #[serde(default)]
     pub run: Vec<String>,
+    #[serde(default)]
+    pub files: Vec<FileLink>,
+    /// Pasta base dos `files.src`: assets embutidos, pasta do .toml do usuário ou repo de dotfiles.
+    #[serde(skip)]
+    pub root: PathBuf,
+}
+
+#[derive(Deserialize, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct FileLink {
+    pub src: String,
+    /// Sempre dentro do home: `~/...`
+    pub dest: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -69,12 +87,29 @@ impl Module {
 }
 
 impl Catalog {
-    /// Catálogo embutido + ~/.config/devup/modules/*.toml (mesmo nome sobrescreve).
-    pub fn load() -> Result<Catalog, String> {
-        let mut cat = parse(DEFAULT, "catálogo embutido")?;
-        for path in user_files() {
-            let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            cat.merge(parse(&text, &path.display().to_string())?);
+    /// Camadas, a de baixo sobrescreve pelo nome: embutido, ~/.config/devup/modules/*.toml,
+    /// e cada repo de dotfiles já clonado (`devup/*.toml`, ou um módulo stow com o nome do repo).
+    pub fn load(repos: &[String]) -> Result<Catalog, String> {
+        let mut cat = parse(DEFAULT, "catálogo embutido", &assets_dir())?;
+        let modules_dir = config_dir().join("modules");
+        for path in toml_files(&modules_dir) {
+            cat.merge(parse_file(&path, &modules_dir)?);
+        }
+        for url in repos {
+            let (name, repo) = (repo_name(url), repos_dir().join(repo_name(url)));
+            if !repo.exists() {
+                continue;
+            }
+            if repo.join("devup").is_dir() {
+                for path in toml_files(&repo.join("devup")) {
+                    cat.merge(parse_file(&path, &repo)?);
+                }
+            } else {
+                let files = stow_files(&repo).map_err(|e| format!("{}: {e}", repo.display()))?;
+                let description = format!("dotfiles de {url}");
+                let module = Module { name, category: "dotfiles".into(), description, files, root: repo, ..Default::default() };
+                cat.merge(Catalog { modules: vec![module], ..Default::default() });
+            }
         }
         cat.validate()?;
         Ok(cat)
@@ -82,7 +117,7 @@ impl Catalog {
 
     #[cfg(test)]
     pub fn builtin() -> Catalog {
-        parse(DEFAULT, "default").unwrap()
+        parse(DEFAULT, "default", &assets_dir()).unwrap()
     }
 
     fn merge(&mut self, other: Catalog) {
@@ -141,8 +176,14 @@ impl Catalog {
             if self.profiles.contains_key(&m.name) {
                 return Err(format!("{}: nome usado por módulo e perfil", m.name));
             }
-            if !m.has_install() && m.services.is_empty() && m.groups.is_empty() && m.run.is_empty() {
+            if !m.has_install() && m.services.is_empty() && m.groups.is_empty() && m.run.is_empty() && m.files.is_empty() {
                 return Err(format!("{}: módulo sem nada a fazer", m.name));
+            }
+            for f in &m.files {
+                let escapes = Path::new(&f.src).components().any(|c| !matches!(c, Component::Normal(_)));
+                if escapes || !f.dest.starts_with("~/") || f.dest.contains("/../") {
+                    return Err(format!("{}: arquivo inválido {} -> {} (src relativo, dest em ~/)", m.name, f.src, f.dest));
+                }
             }
         }
         // Expandir tudo pega referências desconhecidas e ciclos.
@@ -151,13 +192,19 @@ impl Catalog {
     }
 }
 
-fn parse(text: &str, origin: &str) -> Result<Catalog, String> {
-    toml::from_str(text).map_err(|e| format!("{origin}: {e}"))
+fn parse(text: &str, origin: &str, root: &Path) -> Result<Catalog, String> {
+    let mut cat: Catalog = toml::from_str(text).map_err(|e| format!("{origin}: {e}"))?;
+    cat.modules.iter_mut().for_each(|m| m.root = root.to_path_buf());
+    Ok(cat)
 }
 
-fn user_files() -> Vec<PathBuf> {
-    let Some(config) = config_dir() else { return vec![] };
-    let mut files: Vec<_> = fs::read_dir(config.join("devup/modules"))
+fn parse_file(path: &Path, root: &Path) -> Result<Catalog, String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    parse(&text, &path.display().to_string(), root)
+}
+
+fn toml_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files: Vec<_> = fs::read_dir(dir)
         .into_iter()
         .flatten()
         .flatten()
@@ -173,7 +220,7 @@ mod tests {
     use super::*;
 
     fn cat(text: &str) -> Catalog {
-        parse(text, "test").unwrap()
+        parse(text, "test", Path::new("/r")).unwrap()
     }
 
     fn names(mods: Vec<&Module>) -> Vec<&str> {
@@ -182,7 +229,7 @@ mod tests {
 
     #[test]
     fn default_catalog_is_valid() {
-        parse(DEFAULT, "default").unwrap().validate().unwrap();
+        Catalog::builtin().validate().unwrap();
     }
 
     #[test]
@@ -230,7 +277,7 @@ mod tests {
 
     #[test]
     fn user_layer_overrides_by_name() {
-        let mut c = parse(DEFAULT, "default").unwrap();
+        let mut c = Catalog::builtin();
         let before = c.modules.len();
         c.merge(cat(r#"
             [[module]]
@@ -247,5 +294,19 @@ mod tests {
         assert_eq!(c.module("git").unwrap().description, "meu git");
         assert_eq!(c.modules.len(), before + 1);
         c.validate().unwrap();
+    }
+
+    #[test]
+    fn rejects_files_outside_root_or_home() {
+        for (src, dest) in [("../x", "~/.x"), ("/etc/passwd", "~/.x"), ("a", "/etc/x"), ("a", "~/../x")] {
+            let c = cat(&format!(r#"
+                [[module]]
+                name = "x"
+                category = "dotfiles"
+                description = ""
+                files = [{{ src = "{src}", dest = "{dest}" }}]
+            "#));
+            assert!(c.validate().is_err(), "{src} -> {dest}");
+        }
     }
 }

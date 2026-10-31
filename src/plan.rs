@@ -1,6 +1,27 @@
-use crate::catalog::Module;
+use crate::catalog::{FileLink, Module};
+use crate::dotfiles::{self, backups_dir, is_linked};
 use crate::pm::{Sys, strs};
-use std::process::{Command, ExitCode, Stdio};
+use std::{
+    fmt,
+    path::PathBuf,
+    process::{Command, ExitCode, Stdio},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+#[derive(Debug, PartialEq)]
+pub enum Step {
+    Cmd(Vec<String>),
+    Link { src: PathBuf, dest: PathBuf },
+}
+
+impl fmt::Display for Step {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Step::Cmd(c) => write!(f, "{}", c.join(" ")),
+            Step::Link { src, dest } => write!(f, "link {} -> {}", dest.display(), src.display()),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Method<'a> {
@@ -35,14 +56,23 @@ pub fn resolve<'a>(m: &'a Module, sys: &Sys) -> Method<'a> {
 /// Consulta o sistema; None quando não dá para saber (script sem `bin`, módulo só de config).
 pub fn installed(m: &Module, sys: &Sys) -> Option<bool> {
     let pkgs = |p: &str| p.split_whitespace().map(String::from).collect::<Vec<_>>();
-    match resolve(m, sys) {
+    let pkg = match resolve(m, sys) {
         Method::Installed => Some(true),
         Method::Native(p) => Some(sys.has_packages(&pkgs(p))),
         Method::Aur(p) => Some(succeeds(&[strs(&["pacman", "-Q"]), pkgs(p)].concat())),
         Method::Flatpak(f) => Some(succeeds(&strs(&["flatpak", "info", "--user", f]))),
         Method::Script(_) if m.bin.is_some() => Some(false),
         _ => None,
+    };
+    if m.files.is_empty() {
+        return pkg;
     }
+    let linked = m.files.iter().all(|f| matches!(link_step(m, f, sys), Step::Link { src, dest } if is_linked(&src, &dest)));
+    Some(pkg.unwrap_or(true) && linked)
+}
+
+fn link_step(m: &Module, f: &FileLink, sys: &Sys) -> Step {
+    Step::Link { src: m.root.join(&f.src), dest: sys.home.join(&f.dest[2..]) }
 }
 
 pub fn succeeds(cmd: &[String]) -> bool {
@@ -54,8 +84,8 @@ pub fn succeeds(cmd: &[String]) -> bool {
         .is_ok_and(|s| s.success())
 }
 
-/// Instalações agrupadas (nativo, aur, flatpak), depois scripts, depois services/groups/run na ordem dos módulos.
-pub fn plan(mods: &[&Module], sys: &Sys) -> Vec<Vec<String>> {
+/// Instalações agrupadas (nativo, aur, flatpak), depois scripts, depois files/services/groups/run na ordem dos módulos.
+pub fn plan(mods: &[&Module], sys: &Sys) -> Vec<Step> {
     let (mut native, mut aur, mut flatpak, mut scripts, mut post) = (vec![], vec![], vec![], vec![], vec![]);
     for m in mods {
         match resolve(m, sys) {
@@ -70,15 +100,16 @@ pub fn plan(mods: &[&Module], sys: &Sys) -> Vec<Vec<String>> {
                 continue;
             }
         }
+        post.extend(m.files.iter().map(|f| link_step(m, f, sys)));
         if !m.services.is_empty() && !(sys.has)("systemctl") {
             eprintln!("⚠ {}: sem systemctl, serviços não habilitados", m.name);
         } else {
-            post.extend(m.services.iter().map(|s| sys.sudo(&["systemctl", "enable", "--now", s])));
+            post.extend(m.services.iter().map(|s| Step::Cmd(sys.sudo(&["systemctl", "enable", "--now", s]))));
         }
         if let (Some(user), false) = (&sys.user, sys.root) {
-            post.extend(m.groups.iter().map(|g| sys.sudo(&["usermod", "-aG", g, user])));
+            post.extend(m.groups.iter().map(|g| Step::Cmd(sys.sudo(&["usermod", "-aG", g, user]))));
         }
-        post.extend(m.run.iter().map(|r| strs(&["sh", "-c", r])));
+        post.extend(m.run.iter().map(|r| Step::Cmd(strs(&["sh", "-c", r]))));
     }
 
     let mut cmds = vec![];
@@ -99,21 +130,36 @@ pub fn plan(mods: &[&Module], sys: &Sys) -> Vec<Vec<String>> {
         cmds.push(strs(&[&["flatpak", "install", "--user", "-y", "flathub"], &flatpak[..]].concat()));
     }
     cmds.extend(scripts.into_iter().map(|s| strs(&["sh", "-c", s])));
-    cmds.extend(post);
-    cmds
+    cmds.into_iter().map(Step::Cmd).chain(post).collect()
 }
 
-pub fn run(cmds: &[Vec<String>], dry_run: bool) -> ExitCode {
+pub fn run(steps: &[Step], sys: &Sys, dry_run: bool) -> ExitCode {
     let mut failed = vec![];
-    for cmd in cmds {
-        println!("→ {}", cmd.join(" "));
+    let has_links = steps.iter().any(|s| matches!(s, Step::Link { .. }));
+    if has_links && !dry_run && let Err(e) = dotfiles::extract_assets() {
+        failed.push(format!("extrair assets: {e}"));
+    }
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let backup = backups_dir().join(now.to_string());
+    let mut backed_up = false;
+    for step in steps {
+        println!("→ {step}");
         if dry_run {
             continue;
         }
-        let ok = Command::new(&cmd[0]).args(&cmd[1..]).status().is_ok_and(|s| s.success());
+        let ok = match step {
+            Step::Cmd(cmd) => Command::new(&cmd[0]).args(&cmd[1..]).status().is_ok_and(|s| s.success()),
+            Step::Link { src, dest } => dotfiles::link(src, dest, &sys.home, &backup)
+                .inspect(|moved| backed_up |= moved)
+                .inspect_err(|e| eprintln!("  {e}"))
+                .is_ok(),
+        };
         if !ok {
-            failed.push(cmd.join(" "));
+            failed.push(step.to_string());
         }
+    }
+    if backed_up {
+        println!("\nArquivos substituídos foram para {} (desfaça com `devup restore`)", backup.display());
     }
     if failed.is_empty() {
         return ExitCode::SUCCESS;
@@ -130,7 +176,11 @@ mod tests {
     use crate::pm::Pm;
 
     fn sys(pm: Option<Pm>, root: bool, has: fn(&str) -> bool) -> Sys {
-        Sys { pm, root, user: Some("me".into()), has }
+        Sys { pm, root, user: Some("me".into()), has, home: "/h".into() }
+    }
+
+    fn as_cmds(steps: Vec<Step>) -> Vec<Vec<String>> {
+        steps.into_iter().map(|s| match s { Step::Cmd(c) => c, Step::Link { .. } => panic!("link inesperado") }).collect()
     }
 
     #[test]
@@ -151,7 +201,7 @@ mod tests {
     fn plan_groups_and_post_steps() {
         let cat = Catalog::builtin();
         let mods = cat.expand(&["lazygit".into(), "btop".into(), "spotify".into(), "rustup".into(), "docker".into()]).unwrap();
-        let cmds = plan(&mods, &sys(Some(Pm::Dnf), false, |b| b == "systemctl"));
+        let cmds = as_cmds(plan(&mods, &sys(Some(Pm::Dnf), false, |b| b == "systemctl")));
 
         assert_eq!(cmds[0], strs(&["sudo", "dnf", "install", "-y", "git", "btop", "moby-engine", "docker-compose", "flatpak"]));
         assert_eq!(cmds.iter().filter(|c| c.contains(&"dnf".to_string())).count(), 1);
@@ -163,8 +213,20 @@ mod tests {
         // lazygit não tem pacote no dnf: avisa e segue
         assert!(!cmds.concat().contains(&"lazygit".to_string()));
 
-        let root = plan(&mods, &sys(Some(Pm::Dnf), true, |b| b == "systemctl"));
+        let root = as_cmds(plan(&mods, &sys(Some(Pm::Dnf), true, |b| b == "systemctl")));
         assert_eq!(root[0][0], "dnf");
         assert!(!root.iter().any(|c| c[0] == "usermod"));
+    }
+
+    #[test]
+    fn links_come_after_install_and_resolve_paths() {
+        let cat = Catalog::builtin();
+        let tmux = cat.module("tmux").unwrap();
+        let steps = plan(&[tmux], &sys(Some(Pm::Apt), false, |_| false));
+        assert!(matches!(&steps[0], Step::Cmd(c) if c[1] == "apt-get"));
+        assert_eq!(steps.last().unwrap(), &Step::Link {
+            src: tmux.root.join("tmux/tmux.conf"),
+            dest: "/h/.config/tmux/tmux.conf".into(),
+        });
     }
 }

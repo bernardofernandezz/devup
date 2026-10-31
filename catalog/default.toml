@@ -1,12 +1,13 @@
 # Catálogo do devup. Ordem de instalação: nativo (pacman/apt/dnf/zypper) → aur (paru/yay) → flatpak → script.
 # Vários pacotes nativos podem ser separados por espaço. `bin`: se já estiver no PATH, a instalação é pulada.
 # Depois da instalação: `services` (systemctl enable --now), `groups` (usermod -aG) e `run` (sh -c, idempotente).
+# `files`: links para ~ (src relativo a catalog/assets/); o que existir no destino vai para backup.
 # Módulos com o mesmo nome em ~/.config/devup/modules/*.toml sobrescrevem estes.
 
 # ---------- perfis ----------
 [profile.dev]
 description = "Ferramentas de desenvolvimento"
-modules = ["git", "neovim", "docker", "lazygit", "cli-tools", "btop", "mise", "vscode"]
+modules = ["git", "neovim", "docker", "lazygit", "cli-tools", "btop", "mise", "tmux", "starship", "vscode"]
 
 [profile.gaming]
 description = "Jogos no Linux"
@@ -120,6 +121,27 @@ category = "dev"
 description = "Terminal com GPU"
 pacman = "ghostty"
 zypper = "ghostty"
+files = [{ src = "ghostty/config", dest = "~/.config/ghostty/config" }]
+
+[[module]]
+name = "tmux"
+category = "dev"
+description = "Multiplexador de terminal (prefixo Ctrl-Space)"
+pacman = "tmux"
+apt = "tmux"
+dnf = "tmux"
+zypper = "tmux"
+files = [{ src = "tmux/tmux.conf", dest = "~/.config/tmux/tmux.conf" }]
+
+[[module]]
+name = "starship"
+category = "shell"
+description = "Prompt rápido para qualquer shell"
+pacman = "starship"
+zypper = "starship"
+script = "mkdir -p ~/.local/bin && curl -fsSL https://starship.rs/install.sh | sh -s -- -y -b ~/.local/bin"
+bin = "starship"
+files = [{ src = "starship/starship.toml", dest = "~/.config/starship.toml" }]
 
 # ---------- games ----------
 [[module]]
