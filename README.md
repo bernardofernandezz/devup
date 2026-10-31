@@ -50,7 +50,9 @@ Com um setup já existente, o init pergunta só o que você quer mudar. `devup i
 - **Uma distro não te prende.** O mesmo `devup.toml` funciona em Arch, Debian, Ubuntu, Fedora, openSUSE, Alpine, Void e derivadas.
 - **Declarativo e reproduzível.** Seu setup é um arquivo de 5 linhas. `devup apply --from <url>` replica tudo num PC novo.
 - **Nada é apagado.** Toda config substituída vai para um backup, e `devup restore` desfaz.
-- **Um binário, zero dependências.** Estático, cerca de 2 MB, sem runtime.
+- **Linguagens das fontes oficiais.** Node, Rust, Go, Bun, Deno, Python, Java, .NET e mais, baixadas de nodejs.org, rustup.rs, go.dev etc., com o checksum do projeto conferido.
+- **Entende a máquina.** Distro, desktop, placa de vídeo, notebook, WSL e o que você já tem instalado (inclusive via mise, nvm ou asdf).
+- **Um binário, zero dependências.** Estático, cerca de 7 MB, sem runtime. Se atualiza sozinho com verificação e rollback.
 
 ## Como funciona
 
@@ -91,8 +93,10 @@ dotfiles = ["https://github.com/<você>/dotfiles"]
 | `devup theme list` / `set <nome>` | Lista e troca o tema |
 | `devup dotfiles add <url>` / `sync` | Seu repo de dotfiles |
 | `devup restore [id]` | Devolve os arquivos que o devup substituiu |
+| `devup lang add\|use\|remove\|list\|update` | Linguagens das fontes oficiais |
+| `devup env` | O que o devup detectou: hardware, sessão, linguagens no PATH e de onde vêm |
 | `devup doctor` | Diagnóstico do que está ok e do que corrigir |
-| `devup update` | Atualiza o devup |
+| `devup update [--check\|--rollback]` | Baixa, confere o checksum e troca o binário; `--rollback` volta |
 | `devup list [--category] [--profile]` | O catálogo e como cada app seria instalado aqui |
 | `devup install <app\|perfil>…` | Instala sem mexer no `devup.toml` |
 | `devup completions bash\|zsh\|fish` | Autocomplete |
@@ -126,6 +130,8 @@ Durante a instalação aparece uma linha por etapa, no estilo do cargo. A saída
 - **Códigos de saída:** 0 ok, 1 falha, 2 uso incorreto (ou falta `-y` sem terminal), 130 cancelado.
 - **Autocomplete:** `source <(devup completions zsh)` (ou `bash`, ou `fish`). As configs de shell do devup já fazem isso.
 - **Aviso de versão nova:** verificado no máximo uma vez por dia, em segundo plano. `DEVUP_NO_UPDATE_CHECK=1` desliga.
+- **Animações:** abertura e spinners com as cores do tema; somem em CI, sem terminal, com `-q`, `NO_COLOR` ou `DEVUP_NO_ANIMATION=1`.
+- **API do GitHub:** com `GITHUB_TOKEN` definido, as consultas usam o token e não esbarram no limite de 60 por hora.
 
 ## O que vem no catálogo
 
@@ -139,6 +145,35 @@ Durante a instalação aparece uma linha por etapa, no estilo do cargo. A saída
 | `full` | dev + gaming + essentials |
 
 Também avulsos: nodejs, rustup, ghostty, kitty, chromium, obs e os shells. Veja todos com `devup list`.
+
+### Linguagens
+
+```sh
+devup lang add node go bun          # versões padrão (lts / latest)
+devup lang add node@22 java@21 rust@nightly python@3.12
+devup lang use node@20              # troca a versão em uso
+devup lang list                     # o que existe, o que está instalado e de onde vem
+devup lang update                   # versões novas do que está no devup.toml
+```
+
+| Linguagem | Fonte oficial | Versões |
+|---|---|---|
+| Node.js | nodejs.org | `lts`, `latest`, `22`, `22.11.0` |
+| Bun | github.com/oven-sh/bun | `latest`, `1.4.4` |
+| Deno | github.com/denoland/deno | `latest`, `2.9.8` |
+| Rust | rustup.rs | `stable`, `beta`, `nightly`, `1.89.0` |
+| Go | go.dev | `latest`, `1.27`, `1.27.3` |
+| Zig | ziglang.org | `latest`, `0.17.0` |
+| Python | astral.sh (uv) | `3.13`, `3.12` |
+| Java (Temurin) | adoptium.net | `lts`, `latest`, `21` |
+| .NET | dot.net | `lts`, `latest`, `10.0` |
+| Flutter | flutter.dev | `stable`, `beta`, `3.47.9` |
+| Kotlin | github.com/JetBrains/kotlin | `latest`, `2.4.21` |
+
+- **Checksum:** cada download é conferido com o que o projeto publica. Se a conexão cai, o download continua de onde parou, e o cache em `~/.cache/devup` deixa reinstalar sem rede.
+- **Build certo para a máquina:** x86_64/aarch64 e glibc/musl, escolhidos sozinhos.
+- **Bibliotecas do sistema:** se faltar alguma (`libatomic`, ICU…), o devup instala pela distro e testa de novo.
+- **Onde fica:** as versões ficam em `~/.local/share/devup/toolchains`, e os comandos entram no PATH pelo `~/.local/share/devup/env.sh`, que as configs de shell do devup já carregam.
 
 ### Shell
 

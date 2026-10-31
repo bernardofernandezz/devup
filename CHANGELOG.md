@@ -2,6 +2,37 @@
 
 Todas as mudanças relevantes do devup. Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/), versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.4.0] - 2026-10-31
+
+Linguagens direto das fontes oficiais, detecção do ambiente, self-update nativo e animações.
+
+### Linguagens das fontes oficiais
+
+- `devup lang add node go bun` instala **Node, Bun, Deno, Rust, Go, Zig, Python (uv), Java (Temurin), .NET, Flutter e Kotlin** baixando de nodejs.org, go.dev, rustup.rs, ziglang.org, adoptium.net, dot.net, flutter.dev e dos releases oficiais no GitHub.
+- **Checksum publicado pelo projeto** conferido antes de qualquer arquivo ser usado (SHA256, ou SHA512 no .NET).
+- **Versões**: `lts`, `latest`, `stable`, um major (`node@22`) ou a versão exata. Várias versões lado a lado, e `devup lang use node@20` troca na hora.
+- **Downloads em paralelo** (4 por vez) com barra de progresso, velocidade e tempo restante. Se a conexão cai, o download continua de onde parou, e o cache em `~/.cache/devup` deixa reinstalar sem rede.
+- **Pega o build certo da máquina**: x86_64/aarch64, glibc/musl e Bun "baseline" em CPUs sem AVX2. Quando a linguagem não publica build para a máquina, o devup diz isso e sugere o pacote da distro.
+- **Bibliotecas do sistema resolvidas sozinhas**: depois de instalar, o devup roda a linguagem uma vez. Se faltar `libatomic`, `libstdc++`, ICU etc., ele instala pelo gerenciador da distro e testa de novo.
+- `[toolchains]` no `devup.toml`; `apply`, `status` e `doctor` passam a cuidar das linguagens. `devup lang list`, `use`, `remove` e `update`.
+- O `init` pergunta as linguagens já mostrando o que existe ("node 22 via mise") e não duplica o que já está instalado.
+
+### Detecção do ambiente
+
+- `devup env` mostra distro, CPU (núcleos, AVX2), memória, placa de vídeo, Wayland/X11, notebook, WSL, container, libc e as linguagens já no PATH com a origem de cada uma (mise, nvm, asdf, rustup, distro…).
+- Notebook ganha o módulo `power` (perfis de energia). WSL e container não recebem a config de desktop.
+- O `doctor` avisa sobre placa NVIDIA sem o driver proprietário (com a dica da distro) e sobre linguagens fora do PATH.
+
+### Self-update nativo
+
+- `devup update` baixa a versão nova com barra de progresso, confere o SHA256, testa o binário novo e só então troca, de forma atômica. Depois mostra as novidades.
+- `devup update --check` só avisa; `devup update --rollback` volta para a versão anterior.
+
+### Visual
+
+- Abertura animada com o logo em gradiente e spinners com as cores do tema.
+- Nada disso aparece em CI, sem terminal, com `-q`, `NO_COLOR` ou `DEVUP_NO_ANIMATION=1`.
+
 ## [0.3.0] - 2026-10-31
 
 Experiência de uso no nível de CLIs como gh, cargo, uv, brew e terraform.
@@ -92,6 +123,7 @@ Binários estáticos para `x86_64` e `aarch64`, que rodam em qualquer distro. O 
 - Em Alpine e Void (sem systemd), os `services` dos módulos não são habilitados.
 - A detecção de desktop usa `XDG_CURRENT_DESKTOP`: via SSH ou TTY, os módulos de desktop são pulados.
 
+[0.4.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.4.0
 [0.3.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.3.0
 [0.2.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.2.0
 [0.1.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.1.0
