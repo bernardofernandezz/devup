@@ -36,6 +36,8 @@ pub struct Config {
     pub dotfiles: Vec<String>,
     /// Shell padrão do usuário: um de SHELLS.
     pub shell: Option<String>,
+    /// Tema: embutido ou ~/.config/devup/themes/<nome>.toml.
+    pub theme: Option<String>,
 }
 
 impl Config {

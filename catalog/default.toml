@@ -128,6 +128,16 @@ zypper = "ghostty"
 files = [{ src = "ghostty/config", dest = "~/.config/ghostty/config" }]
 
 [[module]]
+name = "kitty"
+category = "dev"
+description = "Terminal com GPU (usado no Hyprland e no Niri)"
+pacman = "kitty"
+apt = "kitty"
+dnf = "kitty"
+zypper = "kitty"
+files = [{ src = "kitty/kitty.conf", dest = "~/.config/kitty/kitty.conf" }]
+
+[[module]]
 name = "tmux"
 category = "dev"
 description = "Multiplexador de terminal (prefixo Ctrl-Space)"
@@ -224,11 +234,11 @@ category = "desktop"
 description = "Hyprland com waybar, fuzzel, mako, hyprlock e hypridle"
 desktop = ["hyprland"]
 skip_if = "[ -d /usr/share/omarchy ] || [ -d ~/.local/share/omarchy ]"  # o Omarchy já gerencia o Hyprland
-requires = ["fonts"]
-pacman = "hyprland hypridle hyprlock waybar fuzzel mako kitty grim slurp wl-clipboard brightnessctl pavucontrol"
-apt = "hyprland waybar fuzzel mako-notifier kitty grim slurp wl-clipboard brightnessctl pavucontrol"
-dnf = "hyprland waybar fuzzel mako kitty grim slurp wl-clipboard brightnessctl pavucontrol"
-zypper = "hyprland hypridle hyprlock waybar fuzzel mako kitty grim slurp wl-clipboard brightnessctl pavucontrol"
+requires = ["fonts", "kitty"]
+pacman = "hyprland hypridle hyprlock waybar fuzzel mako swaybg grim slurp wl-clipboard brightnessctl pavucontrol"
+apt = "hyprland waybar fuzzel mako-notifier swaybg grim slurp wl-clipboard brightnessctl pavucontrol"
+dnf = "hyprland waybar fuzzel mako swaybg grim slurp wl-clipboard brightnessctl pavucontrol"
+zypper = "hyprland hypridle hyprlock waybar fuzzel mako swaybg grim slurp wl-clipboard brightnessctl pavucontrol"
 files = [
   { src = "hypr/hyprland.conf", dest = "~/.config/hypr/hyprland.conf" },
   { src = "hypr/hypridle.conf", dest = "~/.config/hypr/hypridle.conf" },
@@ -243,10 +253,10 @@ name = "niri"
 category = "desktop"
 description = "Niri com waybar, fuzzel, mako e swaylock"
 desktop = ["niri"]
-requires = ["fonts"]
-pacman = "niri waybar fuzzel mako kitty swaylock swayidle wl-clipboard brightnessctl pavucontrol xwayland-satellite"
-dnf = "niri waybar fuzzel mako kitty swaylock swayidle wl-clipboard brightnessctl pavucontrol"
-zypper = "niri waybar fuzzel mako kitty swaylock swayidle wl-clipboard brightnessctl pavucontrol"
+requires = ["fonts", "kitty"]
+pacman = "niri waybar fuzzel mako swaybg swaylock swayidle wl-clipboard brightnessctl pavucontrol xwayland-satellite"
+dnf = "niri waybar fuzzel mako swaybg swaylock swayidle wl-clipboard brightnessctl pavucontrol"
+zypper = "niri waybar fuzzel mako swaybg swaylock swayidle wl-clipboard brightnessctl pavucontrol"
 files = [
   { src = "niri/config.kdl", dest = "~/.config/niri/config.kdl" },
   { src = "waybar/niri.jsonc", dest = "~/.config/waybar/config.jsonc" },

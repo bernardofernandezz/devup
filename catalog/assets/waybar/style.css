@@ -1,19 +1,21 @@
-/* devup: waybar */
+/* devup: waybar. Cores vêm do tema atual. */
+@import "../devup/current-theme/waybar.css";
+
 * {
   font-family: "JetBrainsMono Nerd Font", monospace;
   font-size: 13px;
 }
 window#waybar {
-  background: rgba(26, 27, 38, 0.9);
-  color: #c0caf5;
+  background: alpha(@background, 0.9);
+  color: @foreground;
 }
 #workspaces button {
   padding: 0 6px;
-  color: #565f89;
+  color: @muted;
 }
 #workspaces button.active,
 #workspaces button.focused {
-  color: #c0caf5;
+  color: @accent;
 }
 #clock, #pulseaudio, #network, #battery, #tray {
   padding: 0 10px;

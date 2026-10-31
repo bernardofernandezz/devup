@@ -23,6 +23,7 @@ prefer-no-csd
 
 spawn-at-startup "waybar"
 spawn-at-startup "mako"
+spawn-at-startup "sh" "-c" "swaybg -m fill -i ~/.config/devup/current-theme/wallpaper.svg"
 spawn-at-startup "swayidle" "-w" "timeout" "300" "swaylock -f" "before-sleep" "swaylock -f"
 
 binds {

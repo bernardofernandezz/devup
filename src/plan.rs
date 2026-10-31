@@ -1,6 +1,7 @@
 use crate::catalog::{FileLink, Module};
 use crate::dotfiles::{self, backups_dir, is_linked};
 use crate::pm::{Sys, strs};
+use crate::theme;
 use std::{
     fmt,
     path::PathBuf,
@@ -151,6 +152,10 @@ pub fn run(steps: &[Step], sys: &Sys, dry_run: bool) -> ExitCode {
     let has_links = steps.iter().any(|s| matches!(s, Step::Link { .. }));
     if has_links && !dry_run && let Err(e) = dotfiles::extract_assets() {
         failed.push(format!("extrair assets: {e}"));
+    }
+    // As configs linkadas incluem arquivos do tema; sem nenhum escolhido, usa o padrão.
+    if has_links && !dry_run && !theme::current_dir().exists() && let Err(e) = theme::apply(theme::DEFAULT, false, false) {
+        failed.push(e);
     }
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let backup = backups_dir().join(now.to_string());

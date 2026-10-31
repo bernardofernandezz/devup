@@ -8,3 +8,4 @@ confirm-close-surface = false
 cursor-style = block
 shell-integration-features = no-cursor
 copy-on-select = clipboard
+config-file = ?~/.config/devup/current-theme/ghostty

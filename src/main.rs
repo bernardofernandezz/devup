@@ -3,6 +3,7 @@ mod config;
 mod dotfiles;
 mod plan;
 mod pm;
+mod theme;
 
 use catalog::{CATEGORIES, Catalog};
 use clap::{Parser, Subcommand};
@@ -70,8 +71,21 @@ enum Cmd {
         #[arg(value_parser = SHELLS)]
         name: String,
     },
+    /// Temas de cores para terminal, tmux, waybar, Hyprland e wallpaper
+    Theme {
+        #[command(subcommand)]
+        cmd: ThemeCmd,
+    },
     /// Devolve os arquivos que o devup substituiu (o backup mais recente, ou o informado)
     Restore { id: Option<String> },
+}
+
+#[derive(Subcommand)]
+enum ThemeCmd {
+    /// Lista os temas (embutidos e de ~/.config/devup/themes)
+    List,
+    /// Troca o tema, salva no devup.toml e recarrega os apps abertos
+    Set { name: String },
 }
 
 #[derive(Subcommand)]
@@ -188,10 +202,17 @@ fn apply(sys: &Sys, cfg: &Config, dry_run: bool, persist: bool) -> Result<ExitCo
     clone_missing(&cfg.dotfiles, dry_run)?;
     let cat = Catalog::load(&cfg.dotfiles)?;
     let mods = cfg.resolve(&cat)?;
+    if let Some(t) = &cfg.theme {
+        theme::render(t)?;
+    }
     if persist {
         save(cfg, dry_run)?;
     }
-    Ok(plan::run(&plan::plan(&mods, sys), sys, dry_run))
+    let code = plan::run(&plan::plan(&mods, sys), sys, dry_run);
+    if let Some(t) = &cfg.theme {
+        theme::apply(t, true, dry_run)?;
+    }
+    Ok(code)
 }
 
 fn restore(sys: &Sys, id: Option<String>, dry_run: bool) -> Result<(), String> {
@@ -216,6 +237,19 @@ fn pick_shell(current: Option<&str>) -> Result<Option<String>, String> {
     let default = current.and_then(|c| items.iter().position(|i| *i == c)).unwrap_or(0);
     let i = Select::new()
         .with_prompt("Shell padrão")
+        .items(&items)
+        .default(default)
+        .interact()
+        .map_err(|e| e.to_string())?;
+    Ok((i > 0).then(|| items[i].to_string()))
+}
+
+fn pick_theme(current: Option<&str>) -> Result<Option<String>, String> {
+    let names = theme::names();
+    let items: Vec<&str> = ["não mexer no tema"].into_iter().chain(names.iter().map(String::as_str)).collect();
+    let default = current.and_then(|c| items.iter().position(|i| *i == c)).unwrap_or(0);
+    let i = Select::new()
+        .with_prompt("Tema")
         .items(&items)
         .default(default)
         .interact()
@@ -274,6 +308,21 @@ fn main() -> ExitCode {
                 let cfg = Config { shell: Some(name), ..current.unwrap_or_default() };
                 apply(&sys, &cfg, dry_run, true)
             }
+            Some(Cmd::Theme { cmd: ThemeCmd::List }) => {
+                let current = current.and_then(|c| c.theme);
+                for name in theme::names() {
+                    let mark = if current.as_ref() == Some(&name) { "●" } else { " " };
+                    println!("{mark} {name}");
+                }
+                Ok(ExitCode::SUCCESS)
+            }
+            Some(Cmd::Theme { cmd: ThemeCmd::Set { name } }) => {
+                theme::render(&name)?;
+                let cfg = Config { theme: Some(name.clone()), ..current.unwrap_or_default() };
+                save(&cfg, dry_run)?;
+                theme::apply(&name, true, dry_run)?;
+                Ok(ExitCode::SUCCESS)
+            }
             Some(Cmd::Restore { id }) => restore(&sys, id, dry_run).map(|_| ExitCode::SUCCESS),
             Some(Cmd::Init) | None => {
                 let old = current.unwrap_or_default();
@@ -282,6 +331,7 @@ fn main() -> ExitCode {
                 cfg.exclude = old.exclude;
                 cfg.dotfiles = old.dotfiles;
                 cfg.shell = pick_shell(old.shell.as_deref())?;
+                cfg.theme = pick_theme(old.theme.as_deref())?;
                 apply(&sys, &cfg, dry_run, true)
             }
         }

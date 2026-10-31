@@ -1,0 +1,6 @@
+/* devup: tema {{name}} */
+@define-color background {{background}};
+@define-color foreground {{foreground}};
+@define-color surface {{surface}};
+@define-color muted {{muted}};
+@define-color accent {{accent}};
