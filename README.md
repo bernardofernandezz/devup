@@ -24,6 +24,7 @@ modules = ["obsidian"]
 exclude = ["vscode"]   # não aplica, mesmo vindo de um perfil
 dotfiles = ["https://github.com/<você>/dotfiles"]
 shell = "zsh"          # zsh | fish | bash
+theme = "tokyo-night"  # devup theme list
 ```
 
 ```sh
@@ -79,6 +80,17 @@ O perfil `desktop` detecta o ambiente (`XDG_CURRENT_DESKTOP`) e só aplica o mó
 
 No Hyprland, suas mudanças vão em `~/.config/hypr/local.conf`.
 
+## Temas
+
+```sh
+devup theme list          # tokyo-night, catppuccin, gruvbox, nord + os seus
+devup theme set gruvbox   # troca e recarrega o que estiver aberto
+```
+
+Um tema muda as cores de kitty, ghostty, tmux, waybar e das bordas do Hyprland, além do wallpaper (Hyprland, Niri, GNOME e KDE) e da cor de destaque do GNOME. Os arquivos gerados ficam em `~/.config/devup/current-theme/`, que as configs do devup incluem.
+
+Para criar o seu, copie um tema de `catalog/themes/*.toml` para `~/.config/devup/themes/<nome>.toml` e troque as cores.
+
 ## Dotfiles
 
 Módulos como `tmux`, `starship` e `ghostty` já vêm com uma config padrão, aplicada por symlink. Para usar os seus:
@@ -127,7 +139,7 @@ desktop = ["gnome", "kde"]           # só aplica nesses desktops (gnome | kde |
 skip_if = "[ -f /etc/algo ]"         # se o comando der sucesso, pula o módulo
 ```
 
-O catálogo embutido fica em `catalog/default.toml`, e as configs padrão em `catalog/assets/`.
+O catálogo embutido fica em `catalog/default.toml`, as configs padrão em `catalog/assets/` e os temas em `catalog/themes/` (paletas + `templates/`).
 
 ## Publicar uma versão
 
