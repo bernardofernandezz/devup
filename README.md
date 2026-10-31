@@ -2,7 +2,7 @@
 
 Configure seu Linux no estilo [Omarchy](https://omarchy.org), em qualquer distro: escolha apps de dev, jogos e uso geral e o `devup` instala cada um pelo melhor método disponível (pacote nativo → flatpak → script).
 
-Suporta distros com `pacman`, `apt`, `dnf` ou `zypper` (Arch, Debian/Ubuntu, Fedora, openSUSE e derivadas). Nas demais, usa flatpak e scripts.
+Suporta distros com `pacman`, `apt`, `dnf`, `zypper`, `apk` ou `xbps` (Arch, Debian/Ubuntu, Fedora, openSUSE, Alpine, Void e derivadas). Nas demais, usa flatpak e scripts. Se um pacote não existir na versão da sua distro, só ele falha: o resto é instalado.
 
 ## Instalação
 
@@ -41,6 +41,13 @@ Nova máquina, mesmo setup:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bernardofernandezz/devup/main/install.sh | sh
 devup apply --from https://raw.githubusercontent.com/<você>/dotfiles/main/devup.toml
+```
+
+Manutenção:
+
+```sh
+devup doctor    # o que está ok, o que o devup contorna e o que precisa de correção
+devup update    # baixa a última versão publicada no mesmo lugar do binário atual
 ```
 
 Comandos avulsos, sem mexer no devup.toml:
@@ -127,6 +134,8 @@ pacman = "docker docker-compose"     # pacotes nativos (separados por espaço)
 apt = "docker.io"
 dnf = "moby-engine"
 zypper = "docker"
+apk = "docker"
+xbps = "docker"
 aur = "..."                          # usado se houver paru/yay
 flatpak = "..."                      # fallback
 script = "curl ... | sh"             # último fallback
