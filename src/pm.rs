@@ -37,6 +37,7 @@ pub struct Sys {
     pub user: Option<String>,
     pub has: fn(&str) -> bool,
     pub home: PathBuf,
+    pub desktop: Option<&'static str>,
 }
 
 impl Sys {
@@ -47,6 +48,7 @@ impl Sys {
             user: env::var("USER").ok(),
             has: has_bin,
             home: crate::config::home(),
+            desktop: detect_desktop(),
         }
     }
 
@@ -87,6 +89,12 @@ impl Sys {
         };
         crate::plan::succeeds(&[strs(query), pkgs.to_vec()].concat())
     }
+}
+
+fn detect_desktop() -> Option<&'static str> {
+    let vars = ["XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION"];
+    let seen = vars.iter().filter_map(|v| env::var(v).ok()).collect::<Vec<_>>().join(":").to_lowercase();
+    crate::catalog::DESKTOPS.into_iter().find(|d| seen.contains(d))
 }
 
 pub fn has_bin(name: &str) -> bool {

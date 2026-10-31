@@ -1,0 +1,20 @@
+/* devup: waybar */
+* {
+  font-family: "JetBrainsMono Nerd Font", monospace;
+  font-size: 13px;
+}
+window#waybar {
+  background: rgba(26, 27, 38, 0.9);
+  color: #c0caf5;
+}
+#workspaces button {
+  padding: 0 6px;
+  color: #565f89;
+}
+#workspaces button.active,
+#workspaces button.focused {
+  color: #c0caf5;
+}
+#clock, #pulseaudio, #network, #battery, #tray {
+  padding: 0 10px;
+}

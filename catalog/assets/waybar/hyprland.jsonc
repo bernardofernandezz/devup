@@ -1,0 +1,13 @@
+// devup: waybar para hyprland
+{
+  "layer": "top",
+  "position": "top",
+  "height": 28,
+  "modules-left": ["hyprland/workspaces"],
+  "modules-center": ["clock"],
+  "modules-right": ["pulseaudio", "network", "battery", "tray"],
+  "clock": { "format": "{:%a %d %b  %H:%M}" },
+  "network": { "format-wifi": "{essid}", "format-ethernet": "eth", "format-disconnected": "offline" },
+  "pulseaudio": { "format": "vol {volume}%", "format-muted": "mudo", "on-click": "pavucontrol" },
+  "battery": { "format": "bat {capacity}%" }
+}

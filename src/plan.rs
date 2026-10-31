@@ -53,6 +53,15 @@ pub fn resolve<'a>(m: &'a Module, sys: &Sys) -> Method<'a> {
     }
 }
 
+/// Por que o módulo não se aplica nesta máquina, se for o caso.
+pub fn skip_reason(m: &Module, sys: &Sys) -> Option<String> {
+    if !m.desktop.is_empty() && !sys.desktop.is_some_and(|d| m.desktop.iter().any(|x| x == d)) {
+        return Some(format!("só para {}", m.desktop.join("/")));
+    }
+    let cond = m.skip_if.as_ref()?;
+    succeeds(&strs(&["sh", "-c", cond])).then(|| format!("pulado: {cond}"))
+}
+
 /// Consulta o sistema; None quando não dá para saber (script sem `bin`, módulo só de config).
 pub fn installed(m: &Module, sys: &Sys) -> Option<bool> {
     let pkgs = |p: &str| p.split_whitespace().map(String::from).collect::<Vec<_>>();
@@ -88,6 +97,10 @@ pub fn succeeds(cmd: &[String]) -> bool {
 pub fn plan(mods: &[&Module], sys: &Sys) -> Vec<Step> {
     let (mut native, mut aur, mut flatpak, mut scripts, mut post) = (vec![], vec![], vec![], vec![], vec![]);
     for m in mods {
+        if let Some(reason) = skip_reason(m, sys) {
+            eprintln!("⚠ {}: {reason}", m.name);
+            continue;
+        }
         match resolve(m, sys) {
             Method::Installed => println!("✓ {} já instalado", m.name),
             Method::Native(p) => native.extend(p.split_whitespace()),
@@ -176,7 +189,7 @@ mod tests {
     use crate::pm::Pm;
 
     fn sys(pm: Option<Pm>, root: bool, has: fn(&str) -> bool) -> Sys {
-        Sys { pm, root, user: Some("me".into()), has, home: "/h".into() }
+        Sys { pm, root, user: Some("me".into()), has, home: "/h".into(), desktop: None }
     }
 
     fn as_cmds(steps: Vec<Step>) -> Vec<Vec<String>> {
@@ -228,5 +241,17 @@ mod tests {
             src: tmux.root.join("tmux/tmux.conf"),
             dest: "/h/.config/tmux/tmux.conf".into(),
         });
+    }
+
+    #[test]
+    fn desktop_modules_only_apply_on_their_desktop() {
+        let cat = Catalog::builtin();
+        let gnome = cat.module("gnome").unwrap();
+        let mut s = sys(Some(Pm::Apt), false, |_| false);
+        assert!(plan(&[gnome], &s).is_empty());
+        s.desktop = Some("gnome");
+        assert!(plan(&[gnome], &s).iter().any(|st| st.to_string().ends_with("gnome.sh")));
+        s.desktop = Some("kde");
+        assert!(plan(&[gnome], &s).is_empty());
     }
 }

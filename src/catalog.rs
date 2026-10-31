@@ -9,6 +9,7 @@ use std::{
 };
 
 const DEFAULT: &str = include_str!("../catalog/default.toml");
+pub const DESKTOPS: [&str; 4] = ["gnome", "kde", "hyprland", "niri"];
 pub const CATEGORIES: [&str; 8] = ["dev", "games", "general", "server", "shell", "desktop", "theme", "dotfiles"];
 
 #[derive(Deserialize, Default)]
@@ -28,6 +29,11 @@ pub struct Module {
     pub description: String,
     #[serde(default)]
     pub requires: Vec<String>,
+    /// Só aplica nestes desktops (vazio = todos).
+    #[serde(default)]
+    pub desktop: Vec<String>,
+    /// Comando sh; se der sucesso, o módulo é pulado.
+    pub skip_if: Option<String>,
     pub pacman: Option<String>,
     pub apt: Option<String>,
     pub dnf: Option<String>,
@@ -178,6 +184,9 @@ impl Catalog {
             }
             if !m.has_install() && m.services.is_empty() && m.groups.is_empty() && m.run.is_empty() && m.files.is_empty() {
                 return Err(format!("{}: módulo sem nada a fazer", m.name));
+            }
+            if let Some(d) = m.desktop.iter().find(|d| !DESKTOPS.contains(&d.as_str())) {
+                return Err(format!("{}: desktop inválido '{d}' (use {})", m.name, DESKTOPS.join(", ")));
             }
             for f in &m.files {
                 let escapes = Path::new(&f.src).components().any(|c| !matches!(c, Component::Normal(_)));

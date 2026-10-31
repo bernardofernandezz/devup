@@ -90,6 +90,7 @@ fn list(cat: &Catalog, sys: &Sys, category: Option<String>, profile: Option<Stri
     };
     for m in mods.iter().filter(|m| category.as_ref().is_none_or(|c| *c == m.category)) {
         let how = match plan::resolve(m, sys) {
+            _ if let Some(reason) = plan::skip_reason(m, sys) => reason,
             Method::Installed => "instalado".into(),
             Method::Native(p) => format!("{}: {p}", sys.pm.unwrap().bin()),
             Method::Aur(p) => format!("aur: {p}"),
@@ -98,7 +99,7 @@ fn list(cat: &Catalog, sys: &Sys, category: Option<String>, profile: Option<Stri
             Method::Nothing => "config".into(),
             Method::Unavailable => "indisponível".into(),
         };
-        println!("{:8} {:13} {:40} {}", m.category, m.name, how, m.description);
+        println!("{:8} {:13} {:40.40} {}", m.category, m.name, how, m.description);
     }
     if profile.is_none() && category.is_none() {
         println!("\nPerfis:");
@@ -130,6 +131,7 @@ fn menu(cat: &Catalog, selected: &[String]) -> Result<Vec<String>, String> {
 fn status(cat: &Catalog, sys: &Sys, cfg: &Config) -> Result<(), String> {
     for m in cfg.resolve(cat)? {
         let mark = match plan::installed(m, sys) {
+            _ if plan::skip_reason(m, sys).is_some() => "-",
             Some(true) => "✓",
             Some(false) => "✗",
             None => "?",

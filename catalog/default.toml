@@ -21,6 +21,10 @@ modules = ["firefox", "obsidian", "spotify", "vlc", "libreoffice"]
 description = "Servidor headless"
 modules = ["git", "neovim", "cli-tools", "btop", "docker"]
 
+[profile.desktop]
+description = "Fontes + config do seu desktop (GNOME, KDE, Hyprland ou Niri, o que estiver rodando)"
+modules = ["fonts", "gnome", "kde", "hyprland", "niri"]
+
 [profile.full]
 description = "Dev + jogos + apps do dia a dia"
 include = ["dev", "gaming", "essentials"]
@@ -186,6 +190,68 @@ dnf = "bash bash-completion"
 zypper = "bash bash-completion"
 files = [{ src = "bash/.bashrc", dest = "~/.bashrc" }]
 run = ['s="$(command -v bash)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
+
+# ---------- desktop ----------
+# `desktop = [...]`: o módulo só se aplica se esse for o desktop em uso (XDG_CURRENT_DESKTOP).
+[[module]]
+name = "fonts"
+category = "desktop"
+description = "JetBrainsMono Nerd Font + emoji"
+pacman = "ttf-jetbrains-mono-nerd noto-fonts-emoji"
+script = "d=~/.local/share/fonts/JetBrainsMonoNerd && mkdir -p $d && curl -fsSL https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz | tar -xJ -C $d && fc-cache -f"
+
+[[module]]
+name = "gnome"
+category = "desktop"
+description = "GNOME: tema escuro, 6 workspaces, Super+1..6, Super+Q, Super+Enter"
+desktop = ["gnome"]
+requires = ["fonts"]
+files = [{ src = "desktop/gnome.sh", dest = "~/.config/devup/desktop/gnome.sh" }]
+run = ["sh ~/.config/devup/desktop/gnome.sh"]
+
+[[module]]
+name = "kde"
+category = "desktop"
+description = "KDE Plasma: tema escuro, 6 áreas de trabalho, Meta+1..6, Meta+Q"
+desktop = ["kde"]
+requires = ["fonts"]
+files = [{ src = "desktop/kde.sh", dest = "~/.config/devup/desktop/kde.sh" }]
+run = ["sh ~/.config/devup/desktop/kde.sh"]
+
+[[module]]
+name = "hyprland"
+category = "desktop"
+description = "Hyprland com waybar, fuzzel, mako, hyprlock e hypridle"
+desktop = ["hyprland"]
+skip_if = "[ -d /usr/share/omarchy ] || [ -d ~/.local/share/omarchy ]"  # o Omarchy já gerencia o Hyprland
+requires = ["fonts"]
+pacman = "hyprland hypridle hyprlock waybar fuzzel mako kitty grim slurp wl-clipboard brightnessctl pavucontrol"
+apt = "hyprland waybar fuzzel mako-notifier kitty grim slurp wl-clipboard brightnessctl pavucontrol"
+dnf = "hyprland waybar fuzzel mako kitty grim slurp wl-clipboard brightnessctl pavucontrol"
+zypper = "hyprland hypridle hyprlock waybar fuzzel mako kitty grim slurp wl-clipboard brightnessctl pavucontrol"
+files = [
+  { src = "hypr/hyprland.conf", dest = "~/.config/hypr/hyprland.conf" },
+  { src = "hypr/hypridle.conf", dest = "~/.config/hypr/hypridle.conf" },
+  { src = "hypr/hyprlock.conf", dest = "~/.config/hypr/hyprlock.conf" },
+  { src = "waybar/hyprland.jsonc", dest = "~/.config/waybar/config.jsonc" },
+  { src = "waybar/style.css", dest = "~/.config/waybar/style.css" },
+]
+run = ["touch ~/.config/hypr/local.conf", "hyprctl reload >/dev/null 2>&1 || true"]
+
+[[module]]
+name = "niri"
+category = "desktop"
+description = "Niri com waybar, fuzzel, mako e swaylock"
+desktop = ["niri"]
+requires = ["fonts"]
+pacman = "niri waybar fuzzel mako kitty swaylock swayidle wl-clipboard brightnessctl pavucontrol xwayland-satellite"
+dnf = "niri waybar fuzzel mako kitty swaylock swayidle wl-clipboard brightnessctl pavucontrol"
+zypper = "niri waybar fuzzel mako kitty swaylock swayidle wl-clipboard brightnessctl pavucontrol"
+files = [
+  { src = "niri/config.kdl", dest = "~/.config/niri/config.kdl" },
+  { src = "waybar/niri.jsonc", dest = "~/.config/waybar/config.jsonc" },
+  { src = "waybar/style.css", dest = "~/.config/waybar/style.css" },
+]
 
 # ---------- games ----------
 [[module]]
