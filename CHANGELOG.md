@@ -2,6 +2,41 @@
 
 Todas as mudanças relevantes do devup. Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/), versões em [SemVer](https://semver.org/lang/pt-BR/).
 
+## [0.3.0] - 2026-10-31
+
+Experiência de uso no nível de CLIs como gh, cargo, uv, brew e terraform.
+
+### Saída e execução
+
+- **Progresso no estilo cargo**: uma linha por etapa com contador (`Instalando [2/5] 12 pacotes (pacman)`), spinner e tempo. A saída do pacman, apt e afins vai para um log, não para a tela.
+- **Falhas legíveis**: só o final da saída de quem falhou aparece, junto com o caminho do log completo.
+- **Resumo final**: `✓ Pronto em 1m12s · 15 pacotes · 5 configs`, mais o próximo passo quando houver, como "abra um novo terminal para usar o zsh" ou "saia e entre de novo para usar o grupo docker".
+- **Logs** de cada execução em `~/.local/state/devup/logs/` (os 20 mais recentes).
+- **sudo uma vez, no começo**: o devup diz para que vai usar o sudo, pede a senha antes de começar e mantém o sudo ativo até o fim.
+- **`-v` / `-q`**: saída completa dos comandos ou só erros e resumo.
+
+### Plano antes de agir
+
+- `apply`, `add`, `install`, `shell` e `dotfiles` mostram o plano (instalar, já tem, pular, configs e backups, serviços e grupos, shell e tema) e pedem uma confirmação, como o `terraform apply`.
+- Se a máquina já está igual ao pedido, o comando diz "Nada a fazer" e não pergunta nada.
+- `-y` aplica sem perguntar. Sem terminal, `-y` é obrigatório (exit 2).
+
+### Descoberta e erros
+
+- **Ajuda inteira em português**, com comandos agrupados, exemplos em cada subcomando e argumentos documentados.
+- **"Você quis dizer?"** para comandos, opções, apps, perfis, temas, shells e backups (`dokcer` → `docker`, `zhs` → `zsh`).
+- **Argumento faltando abre um seletor**: `devup add`, `install`, `remove`, `theme set`, `shell` e `restore`.
+- **Autocomplete**: `devup completions bash|zsh|fish`. As configs de shell do devup já carregam o autocomplete.
+
+### Automação e robustez
+
+- `--json` em `list`, `status`, `doctor` e `theme list`.
+- Códigos de saída: 0 ok, 1 falha, 2 uso incorreto, 130 cancelado.
+- `--color auto|always|never` e respeito a `NO_COLOR`.
+- `devup list | head` não quebra mais, e o Ctrl+C sempre devolve o cursor.
+- Aviso de versão nova, verificado no máximo uma vez por dia em segundo plano (desligue com `DEVUP_NO_UPDATE_CHECK=1`).
+- A troca de shell usa `usermod` com o sudo já autorizado, em vez de um `chsh` que pedia senha no meio.
+
 ## [0.2.0] - 2026-10-31
 
 O `devup init` agora entende a sua máquina em vez de mostrar uma lista com 43 opções.
@@ -57,5 +92,6 @@ Binários estáticos para `x86_64` e `aarch64`, que rodam em qualquer distro. O 
 - Em Alpine e Void (sem systemd), os `services` dos módulos não são habilitados.
 - A detecção de desktop usa `XDG_CURRENT_DESKTOP`: via SSH ou TTY, os módulos de desktop são pulados.
 
+[0.3.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.3.0
 [0.2.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.2.0
 [0.1.0]: https://github.com/bernardofernandezz/devup/releases/tag/v0.1.0

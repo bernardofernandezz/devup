@@ -81,7 +81,7 @@ dotfiles = ["https://github.com/<você>/dotfiles"]
 
 | Comando | O que faz |
 |---|---|
-| `devup` / `devup init [--yes]` | Entende a máquina, recomenda, mostra o plano e aplica |
+| `devup` / `devup init [-y]` | Entende a máquina, recomenda, mostra o plano e aplica |
 | `devup apply` | Deixa a máquina igual ao `devup.toml` |
 | `devup apply --from <arquivo\|url>` | Usa o setup de outra máquina (validado antes de salvar) |
 | `devup add <app\|perfil>…` | Adiciona e aplica |
@@ -95,8 +95,37 @@ dotfiles = ["https://github.com/<você>/dotfiles"]
 | `devup update` | Atualiza o devup |
 | `devup list [--category] [--profile]` | O catálogo e como cada app seria instalado aqui |
 | `devup install <app\|perfil>…` | Instala sem mexer no `devup.toml` |
+| `devup completions bash\|zsh\|fish` | Autocomplete |
 
-Todo comando aceita `--dry-run`, que mostra o que seria feito sem executar nem salvar nada.
+Todo comando que muda a máquina mostra o plano antes e pergunta uma vez, como o `terraform apply`. Sem o argumento, `add`, `install`, `remove`, `theme set`, `shell` e `restore` abrem um seletor. Um nome errado vira sugestão: `devup install dokcer` → *você quis dizer docker?*
+
+## Saída e opções
+
+Durante a instalação aparece uma linha por etapa, no estilo do cargo. A saída do gerenciador de pacotes vai para um log e só reaparece se algo falhar:
+
+```
+  Atualizando [1/4] índice de pacotes 3.1s
+   Instalando [2/4] 9 pacotes (pacman) 41.7s
+   Instalando [3/4] 3 apps (flatpak) 1m02s
+     Linkando [4/4] 5 configs · 1 para backup
+✓ Pronto em 1m48s · 12 pacotes · 5 configs
+→ Abra um novo terminal para usar o zsh
+```
+
+| Opção | O que faz |
+|---|---|
+| `-y`, `--yes` | Aplica sem perguntar. Em scripts (sem terminal), é obrigatório |
+| `--dry-run` | Mostra o plano e os comandos, sem executar nem salvar nada |
+| `-v`, `--verbose` | Mostra a saída completa de cada comando |
+| `-q`, `--quiet` | Só erros e o resumo final |
+| `--color auto\|always\|never` | Cores; `NO_COLOR` também é respeitado |
+| `--json` | Em `list`, `status`, `doctor` e `theme list`, para scripts |
+
+- **sudo:** pedido uma vez, antes de começar, dizendo para que será usado.
+- **Logs:** cada execução fica em `~/.local/state/devup/logs/`.
+- **Códigos de saída:** 0 ok, 1 falha, 2 uso incorreto (ou falta `-y` sem terminal), 130 cancelado.
+- **Autocomplete:** `source <(devup completions zsh)` (ou `bash`, ou `fish`). As configs de shell do devup já fazem isso.
+- **Aviso de versão nova:** verificado no máximo uma vez por dia, em segundo plano. `DEVUP_NO_UPDATE_CHECK=1` desliga.
 
 ## O que vem no catálogo
 
