@@ -73,7 +73,8 @@ impl Config {
         } else if cat.module(name).is_some() {
             &mut self.modules
         } else {
-            return Err(format!("desconhecido: {name}. Veja `devup list`."));
+            let known = cat.modules.iter().map(|m| m.name.as_str()).chain(cat.profiles.keys().map(String::as_str));
+            return Err(format!("app ou perfil desconhecido: {name}{} · devup list mostra todos", crate::ui::did_you_mean(name, known)));
         };
         if !list.iter().any(|n| n == name) {
             list.push(name.to_string());

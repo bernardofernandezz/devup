@@ -8,6 +8,7 @@ if status is-interactive
     type -q zoxide; and zoxide init fish | source
     type -q fzf; and fzf --fish 2>/dev/null | source
     type -q starship; and starship init fish | source
+    type -q devup; and devup completions fish | source
 end
 
 for f in ~/.config/devup/shell/aliases.sh ~/.config/devup/shell/local.fish

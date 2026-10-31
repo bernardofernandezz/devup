@@ -77,7 +77,8 @@ impl Sys {
     pub fn install_base(&self) -> Option<Vec<String>> {
         let base: &[&str] = match self.pm? {
             Pm::Pacman => &["pacman", "-S", "--needed", "--noconfirm"],
-            Pm::Apt => &["apt-get", "install", "-y"],
+            // Sem perguntas do debconf (tzdata etc.), já que a saída é capturada.
+            Pm::Apt => &["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y"],
             Pm::Dnf => &["dnf", "install", "-y"],
             Pm::Zypper => &["zypper", "--non-interactive", "install"],
             Pm::Apk => &["apk", "add"],

@@ -1,12 +1,11 @@
-use crate::catalog::{Catalog, Module};
+use crate::catalog::Catalog;
 use crate::config::{Config, SHELLS};
-use crate::dotfiles::is_linked;
-use crate::plan::{self, Method};
+use crate::plan;
 use crate::pm::Sys;
 use crate::theme;
+use crate::ui::{self, Changes, Error, Ui};
 use console::style;
-use dialoguer::{Input, MultiSelect, Select, theme::ColorfulTheme};
-use std::{env, fs, io::IsTerminal, process::Command};
+use std::{env, fs, process::Command};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Use {
@@ -103,7 +102,7 @@ pub fn detect(cat: &Catalog, sys: &Sys) -> Signals {
     Signals { desktop: sys.desktop.is_some(), installed, bins, shell: login_shell(sys), git_identity }
 }
 
-fn login_shell(sys: &Sys) -> Option<String> {
+pub fn login_shell(sys: &Sys) -> Option<String> {
     let from_passwd = sys.user.as_ref().and_then(|u| Command::new("getent").args(["passwd", u]).output().ok()).and_then(|o| {
         let line = String::from_utf8(o.stdout).ok()?;
         line.trim().rsplit(':').next().filter(|s| !s.is_empty()).map(String::from)
@@ -199,91 +198,7 @@ pub fn to_config(a: &Answers, base: &Config, desktop: bool) -> Config {
     cfg
 }
 
-#[derive(Default, Debug)]
-pub struct Summary {
-    pub install: Vec<String>,
-    pub have: Vec<String>,
-    pub configure: Vec<String>,
-    pub skip: Vec<String>,
-    pub links: usize,
-    /// Destinos (`~/...`) que já existem e vão para o backup.
-    pub backups: Vec<String>,
-}
-
-pub fn summarize(mods: &[&Module], sys: &Sys, is_installed: &dyn Fn(&Module) -> Option<bool>) -> Summary {
-    let mut s = Summary::default();
-    for m in mods {
-        if plan::skip_reason(m, sys).is_some() || plan::resolve(m, sys) == Method::Unavailable {
-            s.skip.push(m.name.clone());
-            continue;
-        }
-        let list = match is_installed(m) {
-            Some(true) => &mut s.have,
-            _ if m.has_install() => &mut s.install,
-            _ => &mut s.configure,
-        };
-        list.push(m.name.clone());
-        for f in &m.files {
-            s.links += 1;
-            let dest = sys.home.join(&f.dest[2..]);
-            if dest.symlink_metadata().is_ok() && !is_linked(&m.root.join(&f.src), &dest) {
-                s.backups.push(f.dest.clone());
-            }
-        }
-    }
-    s
-}
-
 // ---------- interface ----------
-
-struct Ui {
-    theme: ColorfulTheme,
-}
-
-impl Ui {
-    /// Escolha única; `short` é o que fica na tela depois de responder.
-    fn select(&self, prompt: &str, items: &[String], short: &dyn Fn(usize) -> String, default: usize) -> Result<usize, String> {
-        let i = Select::with_theme(&self.theme)
-            .with_prompt(prompt)
-            .items(items)
-            .default(default)
-            .report(false)
-            .interact()
-            .map_err(|e| e.to_string())?;
-        report(prompt, &short(i));
-        Ok(i)
-    }
-
-    fn multi(&self, prompt: &str, items: &[String], short: &dyn Fn(usize) -> String, defaults: &[bool]) -> Result<Vec<usize>, String> {
-        let picked = MultiSelect::with_theme(&self.theme)
-            .with_prompt(prompt)
-            .items(items)
-            .defaults(defaults)
-            .report(false)
-            .interact()
-            .map_err(|e| e.to_string())?;
-        let answer = match picked.len() {
-            n if n > 6 => format!("{n} selecionados"),
-            _ => picked.iter().map(|i| short(*i)).collect::<Vec<_>>().join(", "),
-        };
-        report(prompt, if answer.is_empty() { "nada" } else { &answer });
-        Ok(picked)
-    }
-
-    fn input(&self, prompt: &str) -> Result<String, String> {
-        Input::<String>::with_theme(&self.theme)
-            .with_prompt(prompt)
-            .allow_empty(true)
-            .interact_text()
-            .map(|s| s.trim().to_string())
-            .map_err(|e| e.to_string())
-    }
-}
-
-fn report(prompt: &str, answer: &str) {
-    let prompt = prompt.split(" (").next().unwrap_or(prompt);
-    println!("{} {} {} {}", style("✔").green(), style(prompt).bold(), style("·").dim(), style(answer).green());
-}
 
 fn strings<const N: usize>(items: [&str; N]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
@@ -311,7 +226,7 @@ fn header(sys: &Sys, sig: &Signals) {
     println!("\n{}  {}\n", style("devup").bold().magenta(), style(line).dim());
 }
 
-fn ask_uses(ui: &Ui, a: &mut Answers, sig: &Signals, cat: &Catalog) -> Result<(), String> {
+fn ask_uses(ui: &Ui, a: &mut Answers, sig: &Signals, cat: &Catalog) -> Result<(), Error> {
     let items: Vec<String> = Use::ALL
         .iter()
         .map(|u| match hint(*u, sig, cat) {
@@ -325,7 +240,7 @@ fn ask_uses(ui: &Ui, a: &mut Answers, sig: &Signals, cat: &Catalog) -> Result<()
     Ok(())
 }
 
-fn ask_dev(ui: &Ui, a: &mut Answers, sig: &Signals) -> Result<(), String> {
+fn ask_dev(ui: &Ui, a: &mut Answers, sig: &Signals) -> Result<(), Error> {
     if !a.uses.contains(&Use::Dev) {
         return Ok(());
     }
@@ -345,7 +260,7 @@ fn ask_dev(ui: &Ui, a: &mut Answers, sig: &Signals) -> Result<(), String> {
     Ok(())
 }
 
-fn ask_shell(ui: &Ui, a: &mut Answers, sig: &Signals) -> Result<(), String> {
+pub fn ask_shell(ui: &Ui, a: &mut Answers, sig: &Signals) -> Result<(), Error> {
     let about = |s: &str| match s {
         "zsh" => "autosuggestions, syntax highlighting, starship",
         "fish" => "sugestões e cores sem configurar nada",
@@ -372,7 +287,7 @@ fn ask_shell(ui: &Ui, a: &mut Answers, sig: &Signals) -> Result<(), String> {
     Ok(())
 }
 
-fn swatch(name: &str) -> String {
+pub fn swatch(name: &str) -> String {
     let Ok(p) = theme::palette(name) else { return String::new() };
     ["background", "accent", "color1", "color2", "color3", "color4", "color5", "color6"]
         .iter()
@@ -384,7 +299,7 @@ fn swatch(name: &str) -> String {
         .collect()
 }
 
-fn ask_theme(ui: &Ui, a: &mut Answers) -> Result<(), String> {
+pub fn ask_theme(ui: &Ui, a: &mut Answers) -> Result<(), Error> {
     let names = theme::names();
     let mut items: Vec<String> = names.iter().map(|n| format!("{}  {n}", swatch(n))).collect();
     items.push("não mexer no tema".into());
@@ -394,7 +309,7 @@ fn ask_theme(ui: &Ui, a: &mut Answers) -> Result<(), String> {
     Ok(())
 }
 
-fn ask_git(ui: &Ui, a: &Answers, sig: &Signals) -> Result<Option<(String, String)>, String> {
+fn ask_git(ui: &Ui, a: &Answers, sig: &Signals) -> Result<Option<(String, String)>, Error> {
     if !a.uses.contains(&Use::Dev) || sig.git_identity {
         return Ok(None);
     }
@@ -407,7 +322,7 @@ fn ask_git(ui: &Ui, a: &Answers, sig: &Signals) -> Result<Option<(String, String
 }
 
 /// Lista completa, já marcada; o que sair de um perfil vira `exclude`, o que entrar a mais vira `modules`.
-fn adjust(ui: &Ui, cat: &Catalog, cfg: Config) -> Result<Config, String> {
+fn adjust(ui: &Ui, cat: &Catalog, cfg: Config) -> Result<Config, Error> {
     let chosen: Vec<String> = cfg.resolve(cat)?.iter().map(|m| m.name.clone()).collect();
     let items: Vec<String> = cat
         .modules
@@ -429,49 +344,29 @@ fn adjust(ui: &Ui, cat: &Catalog, cfg: Config) -> Result<Config, String> {
     })
 }
 
-fn row(label: &str, names: &[String], note: &str) {
-    if names.is_empty() {
-        return;
-    }
-    let shown: Vec<&str> = names.iter().take(6).map(String::as_str).collect();
-    let more = if names.len() > 6 { format!(" +{}", names.len() - 6) } else { String::new() };
-    println!("  {:<11}{:>3}  {}{}{}", style(label).bold(), names.len(), shown.join(", "), more, style(note).dim());
-}
-
-fn print_summary(s: &Summary, cfg: &Config, login_shell: Option<&str>) {
-    println!("\n{}", style("Plano").bold().underlined());
-    row("instalar", &s.install, "");
-    row("já tem", &s.have, "");
-    row("configurar", &s.configure, "");
-    row("pular", &s.skip, "  (não se aplicam aqui)");
-    if s.links > 0 {
-        let backups = if s.backups.is_empty() {
-            String::new()
-        } else {
-            format!(" · {} para backup: {}", s.backups.len(), s.backups.join(", "))
-        };
-        println!("  {:<11}{:>3}  arquivos linkados{}", style("configs").bold(), s.links, backups);
-    }
+/// Linhas de shell e tema do plano, comparando com o que a máquina usa hoje.
+pub fn changes(cfg: &Config, login_shell: Option<&str>) -> Changes {
     let shell = match (login_shell, cfg.shell.as_deref()) {
-        (_, None) => "não mexe".to_string(),
-        (Some(old), Some(new)) if old != new => format!("{old} → {new}"),
-        (_, Some(new)) => format!("{new} (com a config do devup)"),
+        (_, None) => None,
+        (Some(old), Some(new)) if old != new => Some(format!("{old} → {new}")),
+        (None, Some(new)) => Some(new.to_string()),
+        (Some(_), Some(_)) => None,
     };
-    println!("  {:<11}     {shell}", style("shell").bold());
-    println!("  {:<11}     {}\n", style("tema").bold(), cfg.theme.as_deref().unwrap_or("não mexe"));
+    let theme = cfg.theme.clone().filter(|t| theme::current().as_ref() != Some(t));
+    Changes { shell, theme }
 }
 
 /// O assistente do `devup init`. Retorna None se o usuário cancelar.
-pub fn run(cat: &Catalog, sys: &Sys, current: Option<Config>, yes: bool) -> Result<Option<Outcome>, String> {
-    if !yes && !std::io::stdin().is_terminal() {
-        return Err("o init é interativo; use `devup init --yes` para aceitar as recomendações, ou `devup apply`".into());
+pub fn run(cat: &Catalog, sys: &Sys, current: Option<Config>, yes: bool) -> Result<Option<Outcome>, Error> {
+    if !yes && !ui::interactive() {
+        return Err(Error::usage("o init é interativo; use `devup init -y` para aceitar as recomendações, ou `devup apply`"));
     }
-    println!("{}", style("Analisando sua máquina…").dim());
+    eprintln!("{}", style("Analisando sua máquina…").dim());
     let sig = detect(cat, sys);
     header(sys, &sig);
     let base = current.clone().unwrap_or_default();
     let mut ans = recommend(&sig, cat, current.as_ref());
-    let ui = Ui { theme: ColorfulTheme::default() };
+    let ui = Ui::new();
     let mut git = None;
 
     let mut cfg = match (&current, yes) {
@@ -516,8 +411,8 @@ pub fn run(cat: &Catalog, sys: &Sys, current: Option<Config>, yes: bool) -> Resu
 
     loop {
         let mods = cfg.resolve(cat)?;
-        let summary = summarize(&mods, sys, &|m| plan::installed_pkg(m, sys));
-        print_summary(&summary, &cfg, sig.shell.as_deref());
+        let summary = ui::summarize(&mods, sys, &|m| plan::installed_pkg(m, sys), &|m| ui::system_done(m, sys));
+        ui::print_summary(&summary, &changes(&cfg, sig.shell.as_deref()));
         if yes {
             return Ok(Some(Outcome { cfg, git }));
         }
@@ -596,21 +491,5 @@ mod tests {
         let c = to_config(&server_only, &Config::default(), true);
         assert_eq!(c.profiles, ["server"]);
         assert!(c.exclude.is_empty() && c.modules.is_empty());
-    }
-
-    #[test]
-    fn summary_splits_and_predicts_backups() {
-        let home = env::temp_dir().join(format!("devup-wizard-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&home);
-        fs::create_dir_all(home.join(".config/devup/shell")).unwrap();
-        fs::write(home.join(".config/devup/shell/aliases.sh"), "meu").unwrap();
-        let sys = Sys { pm: Some(Pm::Apt), root: false, user: None, has: |_| false, home: home.clone(), desktop: None };
-
-        let cat = Catalog::builtin();
-        let mods: Vec<&Module> = ["btop", "lutris", "gnome", "shell-common"].iter().map(|n| cat.module(n).unwrap()).collect();
-        let s = summarize(&mods, &sys, &|m| Some(m.name == "btop"));
-        assert_eq!((s.have, s.install, s.skip, s.configure), (vec!["btop".to_string()], vec!["lutris".to_string()], vec!["gnome".to_string()], vec!["shell-common".to_string()]));
-        assert_eq!((s.links, s.backups), (1, vec!["~/.config/devup/shell/aliases.sh".to_string()]));
-        fs::remove_dir_all(home).unwrap();
     }
 }

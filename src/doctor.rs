@@ -4,21 +4,44 @@ use crate::dotfiles::{backups, is_linked, repos_dir};
 use crate::pm::{Pm, Sys};
 use crate::plan::succeeds;
 use crate::{pm::strs, theme};
+use console::style;
+use serde::Serialize;
 use std::{env, process::ExitCode};
 
-/// Diagnóstico da máquina. ✓ ok, - aviso (o devup contorna), ✗ problema que impede algo.
-pub fn run(sys: &Sys, cat: &Catalog, cfg: Option<&Config>) -> ExitCode {
-    let mut problems = 0;
-    let mut line = |ok: Option<bool>, msg: String| {
-        let mark = match ok {
-            Some(true) => "✓",
-            None => "-",
-            Some(false) => {
-                problems += 1;
-                "✗"
-            }
+#[derive(Serialize)]
+pub struct Check {
+    /// ok | warn | error
+    pub level: &'static str,
+    pub message: String,
+}
+
+/// Diagnóstico da máquina: ✓ ok, - aviso (o devup contorna), ✗ problema que impede algo.
+pub fn run(sys: &Sys, cat: &Catalog, cfg: Option<&Config>, json: bool) -> ExitCode {
+    let checks = checks(sys, cat, cfg);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&checks).unwrap());
+    } else {
+        for c in &checks {
+            let mark = match c.level {
+                "ok" => style("✓").green(),
+                "warn" => style("-").yellow(),
+                _ => style("✗").red(),
+            };
+            println!("{} {}", mark.bold(), c.message);
+        }
+    }
+    if checks.iter().any(|c| c.level == "error") { ExitCode::FAILURE } else { ExitCode::SUCCESS }
+}
+
+fn checks(sys: &Sys, cat: &Catalog, cfg: Option<&Config>) -> Vec<Check> {
+    let mut out = vec![];
+    let mut line = |ok: Option<bool>, message: String| {
+        let level = match ok {
+            Some(true) => "ok",
+            None => "warn",
+            Some(false) => "error",
         };
-        println!("{mark} {msg}");
+        out.push(Check { level, message });
     };
     let has = sys.has;
 
@@ -63,7 +86,7 @@ pub fn run(sys: &Sys, cat: &Catalog, cfg: Option<&Config>) -> ExitCode {
 
     let Some(cfg) = cfg else {
         line(None, format!("sem {} (rode `devup init`)", Config::path().display()));
-        return exit(problems);
+        return out;
     };
     let mods = match cfg.resolve(cat) {
         Ok(mods) => {
@@ -72,7 +95,7 @@ pub fn run(sys: &Sys, cat: &Catalog, cfg: Option<&Config>) -> ExitCode {
         }
         Err(e) => {
             line(Some(false), format!("devup.toml: {e}"));
-            return exit(problems);
+            return out;
         }
     };
     for url in &cfg.dotfiles {
@@ -98,9 +121,5 @@ pub fn run(sys: &Sys, cat: &Catalog, cfg: Option<&Config>) -> ExitCode {
     if n > 0 {
         line(None, format!("{n} backup(s) de arquivos substituídos (`devup restore`)"));
     }
-    exit(problems)
-}
-
-fn exit(problems: usize) -> ExitCode {
-    if problems == 0 { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    out
 }

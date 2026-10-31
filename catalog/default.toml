@@ -222,7 +222,7 @@ zypper = "zsh"
 apk = "zsh zsh-autosuggestions zsh-syntax-highlighting"
 xbps = "zsh zsh-autosuggestions zsh-syntax-highlighting"
 files = [{ src = "zsh/.zshrc", dest = "~/.zshrc" }]
-run = ['s="$(command -v zsh)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
+run = ['s="$(command -v zsh)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || { [ "$(id -u)" = 0 ] && usermod -s "$s" root || sudo usermod -s "$s" "$(id -un)"; }']
 
 [[module]]
 name = "fish"
@@ -236,7 +236,7 @@ zypper = "fish"
 apk = "fish"
 xbps = "fish-shell"
 files = [{ src = "fish/config.fish", dest = "~/.config/fish/config.fish" }]
-run = ['s="$(command -v fish)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
+run = ['s="$(command -v fish)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || { [ "$(id -u)" = 0 ] && usermod -s "$s" root || sudo usermod -s "$s" "$(id -un)"; }']
 
 [[module]]
 name = "bash"
@@ -250,7 +250,7 @@ zypper = "bash bash-completion"
 apk = "bash bash-completion"
 xbps = "bash bash-completion"
 files = [{ src = "bash/.bashrc", dest = "~/.bashrc" }]
-run = ['s="$(command -v bash)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || chsh -s "$s"']
+run = ['s="$(command -v bash)"; [ "$(getent passwd "$(id -un)" | cut -d: -f7)" = "$s" ] || { [ "$(id -u)" = 0 ] && usermod -s "$s" root || sudo usermod -s "$s" "$(id -un)"; }']
 
 # ---------- desktop ----------
 # `desktop = [...]`: o módulo só se aplica se esse for o desktop em uso (XDG_CURRENT_DESKTOP).

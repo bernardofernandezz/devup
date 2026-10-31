@@ -165,7 +165,8 @@ impl Catalog {
         } else if let Some(p) = self.profiles.get(name) {
             p.include.iter().chain(&p.modules).collect()
         } else {
-            return Err(format!("desconhecido: {name}. Veja `devup list`."));
+            let known = self.modules.iter().map(|m| m.name.as_str()).chain(self.profiles.keys().map(String::as_str));
+            return Err(format!("app ou perfil desconhecido: {name}{} · devup list mostra todos", crate::ui::did_you_mean(name, known)));
         };
         stack.push(name.to_string());
         for c in children {

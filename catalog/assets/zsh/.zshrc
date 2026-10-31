@@ -22,6 +22,7 @@ command -v mise >/dev/null && eval "$(mise activate zsh)"
 command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
 command -v fzf >/dev/null && source <(fzf --zsh 2>/dev/null)
 command -v starship >/dev/null && eval "$(starship init zsh)"
+command -v devup >/dev/null && source <(devup completions zsh)
 
 for f in ~/.config/devup/shell/aliases.sh ~/.config/devup/shell/local.sh; do
   [ -f "$f" ] && source "$f"

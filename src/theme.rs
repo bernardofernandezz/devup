@@ -14,6 +14,11 @@ fn user_dir() -> PathBuf {
     config_dir().join("themes")
 }
 
+/// O tema aplicado agora, se houver.
+pub fn current() -> Option<String> {
+    fs::read_to_string(current_dir().join(".name")).ok().map(|s| s.trim().to_string())
+}
+
 /// Temas embutidos + ~/.config/devup/themes/*.toml.
 pub fn names() -> Vec<String> {
     let builtin = THEMES.files().map(|f| f.path().to_path_buf());
@@ -32,7 +37,10 @@ pub fn names() -> Vec<String> {
 pub fn palette(name: &str) -> Result<BTreeMap<String, String>, String> {
     let user = fs::read_to_string(user_dir().join(format!("{name}.toml"))).ok();
     let builtin = THEMES.get_file(format!("{name}.toml")).and_then(|f| f.contents_utf8()).map(String::from);
-    let text = user.or(builtin).ok_or_else(|| format!("tema desconhecido: {name} (veja `devup theme list`)"))?;
+    let text = user.or(builtin).ok_or_else(|| {
+        let names = names();
+        format!("tema desconhecido: {name}{} · devup theme list mostra todos", crate::ui::did_you_mean(name, names.iter().map(String::as_str)))
+    })?;
     let table: toml::Table = toml::from_str(&text).map_err(|e| format!("tema {name}: {e}"))?;
     let mut vars = BTreeMap::from([("name".to_string(), name.to_string())]);
     for (k, v) in table {
@@ -69,7 +77,7 @@ pub fn render(name: &str) -> Result<Vec<(String, String)>, String> {
 pub fn apply(name: &str, reload: bool, dry_run: bool) -> Result<(), String> {
     let files = render(name)?;
     let dir = current_dir();
-    println!("→ tema {name} em {}", dir.display());
+    crate::ui::status("Aplicando", &format!("tema {name}"));
     if dry_run {
         return Ok(());
     }
@@ -77,6 +85,7 @@ pub fn apply(name: &str, reload: bool, dry_run: bool) -> Result<(), String> {
     for (file, text) in files {
         fs::write(dir.join(&file), text).map_err(|e| format!("{file}: {e}"))?;
     }
+    fs::write(dir.join(".name"), name).map_err(|e| e.to_string())?;
     if reload {
         let _ = Command::new("sh").arg(dir.join("reload.sh")).status();
     }
