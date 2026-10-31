@@ -1,4 +1,4 @@
-use std::{env, path::Path};
+use std::{env, fs, os::unix::fs::MetadataExt, path::Path};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Pm {
@@ -19,24 +19,56 @@ impl Pm {
     }
 
     /// Detecta pelo binário instalado, o que cobre derivadas (Manjaro, Mint, Pop, Nobara...).
-    pub fn detect() -> Option<Pm> {
+    fn detect(has: fn(&str) -> bool) -> Option<Pm> {
         [Pm::Pacman, Pm::Apt, Pm::Dnf, Pm::Zypper]
             .into_iter()
-            .find(|p| has_bin(p.bin()))
+            .find(|p| has(p.bin()))
+    }
+}
+
+/// Fatos do sistema de que o plano depende; injetáveis nos testes.
+pub struct Sys {
+    pub pm: Option<Pm>,
+    pub root: bool,
+    pub user: Option<String>,
+    pub has: fn(&str) -> bool,
+}
+
+impl Sys {
+    pub fn detect() -> Sys {
+        Sys {
+            pm: Pm::detect(has_bin),
+            root: fs::metadata("/proc/self").is_ok_and(|m| m.uid() == 0),
+            user: env::var("USER").ok(),
+            has: has_bin,
+        }
     }
 
-    pub fn install_cmds(self, pkgs: &[&str]) -> Vec<Vec<String>> {
-        let base: &[&str] = match self {
-            Pm::Pacman => &["sudo", "pacman", "-S", "--needed", "--noconfirm"],
-            Pm::Apt => &["sudo", "apt-get", "install", "-y"],
-            Pm::Dnf => &["sudo", "dnf", "install", "-y"],
-            Pm::Zypper => &["sudo", "zypper", "--non-interactive", "install"],
+    /// paru/yay recusam rodar como root.
+    pub fn aur_helper(&self) -> Option<&'static str> {
+        if self.pm != Some(Pm::Pacman) || self.root {
+            return None;
+        }
+        ["paru", "yay"].into_iter().find(|h| (self.has)(h))
+    }
+
+    pub fn sudo(&self, cmd: &[&str]) -> Vec<String> {
+        (!self.root).then_some("sudo").into_iter().chain(cmd.iter().copied()).map(String::from).collect()
+    }
+
+    pub fn install_cmds(&self, pkgs: &[&str]) -> Vec<Vec<String>> {
+        let Some(pm) = self.pm else { return vec![] };
+        let base: &[&str] = match pm {
+            Pm::Pacman => &["pacman", "-S", "--needed", "--noconfirm"],
+            Pm::Apt => &["apt-get", "install", "-y"],
+            Pm::Dnf => &["dnf", "install", "-y"],
+            Pm::Zypper => &["zypper", "--non-interactive", "install"],
         };
         let mut cmds = Vec::new();
-        if self == Pm::Apt {
-            cmds.push(strs(&["sudo", "apt-get", "update"]));
+        if pm == Pm::Apt {
+            cmds.push(self.sudo(&["apt-get", "update"]));
         }
-        cmds.push(strs(base).into_iter().chain(pkgs.iter().map(|s| s.to_string())).collect());
+        cmds.push(self.sudo(&[base, pkgs].concat()));
         cmds
     }
 }

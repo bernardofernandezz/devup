@@ -1,8 +1,31 @@
-# Catálogo do devup. Ordem de instalação: nativo (pacman/apt/dnf/zypper) → flatpak → script.
-# Vários pacotes nativos podem ser separados por espaço. `bin`: se já estiver no PATH, o app é pulado.
+# Catálogo do devup. Ordem de instalação: nativo (pacman/apt/dnf/zypper) → aur (paru/yay) → flatpak → script.
+# Vários pacotes nativos podem ser separados por espaço. `bin`: se já estiver no PATH, a instalação é pulada.
+# Depois da instalação: `services` (systemctl enable --now), `groups` (usermod -aG) e `run` (sh -c, idempotente).
+# Módulos com o mesmo nome em ~/.config/devup/modules/*.toml sobrescrevem estes.
+
+# ---------- perfis ----------
+[profile.dev]
+description = "Ferramentas de desenvolvimento"
+modules = ["git", "neovim", "docker", "lazygit", "cli-tools", "btop", "mise", "vscode"]
+
+[profile.gaming]
+description = "Jogos no Linux"
+modules = ["steam", "lutris", "heroic", "protonup-qt", "gamemode", "mangohud", "discord"]
+
+[profile.essentials]
+description = "Apps do dia a dia"
+modules = ["firefox", "obsidian", "spotify", "vlc", "libreoffice"]
+
+[profile.server]
+description = "Servidor headless"
+modules = ["git", "neovim", "cli-tools", "btop", "docker"]
+
+[profile.full]
+description = "Dev + jogos + apps do dia a dia"
+include = ["dev", "gaming", "essentials"]
 
 # ---------- dev ----------
-[[app]]
+[[module]]
 name = "git"
 category = "dev"
 description = "Controle de versão"
@@ -12,7 +35,7 @@ dnf = "git"
 zypper = "git"
 bin = "git"
 
-[[app]]
+[[module]]
 name = "neovim"
 category = "dev"
 description = "Editor de texto no terminal"
@@ -22,7 +45,7 @@ dnf = "neovim"
 zypper = "neovim"
 flatpak = "io.neovim.nvim"
 
-[[app]]
+[[module]]
 name = "docker"
 category = "dev"
 description = "Containers"
@@ -30,16 +53,19 @@ pacman = "docker docker-compose"
 apt = "docker.io docker-compose"
 dnf = "moby-engine docker-compose"
 zypper = "docker docker-compose"
+services = ["docker"]
+groups = ["docker"]
 
-[[app]]
+[[module]]
 name = "lazygit"
 category = "dev"
 description = "TUI para git"
+requires = ["git"]
 pacman = "lazygit"
 apt = "lazygit"
 zypper = "lazygit"
 
-[[app]]
+[[module]]
 name = "cli-tools"
 category = "dev"
 description = "ripgrep, fzf, fd, bat, zoxide"
@@ -48,7 +74,7 @@ apt = "ripgrep fzf fd-find bat zoxide"
 dnf = "ripgrep fzf fd-find bat zoxide"
 zypper = "ripgrep fzf fd bat zoxide"
 
-[[app]]
+[[module]]
 name = "btop"
 category = "dev"
 description = "Monitor de recursos"
@@ -57,7 +83,7 @@ apt = "btop"
 dnf = "btop"
 zypper = "btop"
 
-[[app]]
+[[module]]
 name = "nodejs"
 category = "dev"
 description = "Node.js + npm"
@@ -65,7 +91,7 @@ pacman = "nodejs npm"
 apt = "nodejs npm"
 dnf = "nodejs npm"
 
-[[app]]
+[[module]]
 name = "mise"
 category = "dev"
 description = "Gerenciador de versões (node, python, go...)"
@@ -73,7 +99,7 @@ pacman = "mise"
 script = "curl -fsSL https://mise.run | sh"
 bin = "mise"
 
-[[app]]
+[[module]]
 name = "rustup"
 category = "dev"
 description = "Toolchain Rust"
@@ -81,13 +107,14 @@ pacman = "rustup"
 script = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
 bin = "rustup"
 
-[[app]]
+[[module]]
 name = "vscode"
 category = "dev"
 description = "Visual Studio Code"
+aur = "visual-studio-code-bin"
 flatpak = "com.visualstudio.code"
 
-[[app]]
+[[module]]
 name = "ghostty"
 category = "dev"
 description = "Terminal com GPU"
@@ -95,13 +122,13 @@ pacman = "ghostty"
 zypper = "ghostty"
 
 # ---------- games ----------
-[[app]]
+[[module]]
 name = "steam"
 category = "games"
 description = "Loja e launcher da Valve"
 flatpak = "com.valvesoftware.Steam"
 
-[[app]]
+[[module]]
 name = "lutris"
 category = "games"
 description = "Launcher de jogos multi-plataforma"
@@ -111,19 +138,19 @@ dnf = "lutris"
 zypper = "lutris"
 flatpak = "net.lutris.Lutris"
 
-[[app]]
+[[module]]
 name = "heroic"
 category = "games"
 description = "Epic Games / GOG / Amazon"
 flatpak = "com.heroicgameslauncher.hgl"
 
-[[app]]
+[[module]]
 name = "protonup-qt"
 category = "games"
 description = "Gerencia versões do Proton-GE"
 flatpak = "net.davidotek.pupgui2"
 
-[[app]]
+[[module]]
 name = "gamemode"
 category = "games"
 description = "Otimizações de performance para jogos"
@@ -132,7 +159,7 @@ apt = "gamemode"
 dnf = "gamemode"
 zypper = "gamemode"
 
-[[app]]
+[[module]]
 name = "mangohud"
 category = "games"
 description = "Overlay de FPS e métricas"
@@ -141,7 +168,7 @@ apt = "mangohud"
 dnf = "mangohud"
 zypper = "mangohud"
 
-[[app]]
+[[module]]
 name = "discord"
 category = "games"
 description = "Chat de voz e texto"
@@ -149,7 +176,7 @@ pacman = "discord"
 flatpak = "com.discordapp.Discord"
 
 # ---------- general ----------
-[[app]]
+[[module]]
 name = "firefox"
 category = "general"
 description = "Navegador"
@@ -158,7 +185,7 @@ dnf = "firefox"
 zypper = "MozillaFirefox"
 flatpak = "org.mozilla.firefox"
 
-[[app]]
+[[module]]
 name = "chromium"
 category = "general"
 description = "Navegador"
@@ -167,20 +194,20 @@ dnf = "chromium"
 zypper = "chromium"
 flatpak = "org.chromium.Chromium"
 
-[[app]]
+[[module]]
 name = "obsidian"
 category = "general"
 description = "Notas em markdown"
 pacman = "obsidian"
 flatpak = "md.obsidian.Obsidian"
 
-[[app]]
+[[module]]
 name = "spotify"
 category = "general"
 description = "Música"
 flatpak = "com.spotify.Client"
 
-[[app]]
+[[module]]
 name = "vlc"
 category = "general"
 description = "Player de vídeo"
@@ -190,7 +217,7 @@ dnf = "vlc"
 zypper = "vlc"
 flatpak = "org.videolan.VLC"
 
-[[app]]
+[[module]]
 name = "obs"
 category = "general"
 description = "Gravação e streaming"
@@ -199,7 +226,7 @@ apt = "obs-studio"
 dnf = "obs-studio"
 flatpak = "com.obsproject.Studio"
 
-[[app]]
+[[module]]
 name = "libreoffice"
 category = "general"
 description = "Suíte de escritório"
