@@ -51,7 +51,7 @@ devup install dev docker       # instala perfis e/ou módulos (dependências ent
 devup --dry-run install ...    # só mostra os comandos
 ```
 
-Perfis embutidos: `dev`, `gaming`, `essentials`, `server`, `full`.
+Perfis embutidos: `dev`, `gaming`, `essentials`, `server`, `desktop`, `full`.
 
 ## Shell
 
@@ -60,6 +60,24 @@ devup shell zsh   # ou fish / bash: instala, linka a config, starship + zoxide +
 ```
 
 Os três shells carregam os mesmos aliases (`~/.config/devup/shell/aliases.sh`). As configs são links, então suas customizações vão em `~/.config/devup/shell/local.sh` (zsh/bash) ou `local.fish`.
+
+## Desktop
+
+```sh
+devup add desktop   # fontes + config do desktop em uso
+```
+
+O perfil `desktop` detecta o ambiente (`XDG_CURRENT_DESKTOP`) e só aplica o módulo correspondente:
+
+| Módulo | O que faz |
+|---|---|
+| `gnome` | gsettings: tema escuro, 6 workspaces fixos, Super+1..6, Super+Q fecha, Super+Enter terminal |
+| `kde` | kwriteconfig: tema escuro, 6 áreas de trabalho, Meta+1..6, Meta+Q fecha (atalhos após novo login) |
+| `hyprland` | Config completa + waybar, fuzzel, mako, hyprlock, hypridle. Pulado no Omarchy, que já cuida disso |
+| `niri` | Config completa + waybar, fuzzel, mako, swaylock |
+| `fonts` | JetBrainsMono Nerd Font + emoji (em qualquer desktop) |
+
+No Hyprland, suas mudanças vão em `~/.config/hypr/local.conf`.
 
 ## Dotfiles
 
@@ -105,6 +123,8 @@ services = ["docker"]                # systemctl enable --now
 groups = ["docker"]                  # usermod -aG <grupo> $USER
 files = [{ src = "docker/daemon.json", dest = "~/.config/docker/daemon.json" }]  # src relativo à pasta do .toml
 run = ["echo pronto"]                # comandos pós-instalação (devem ser idempotentes)
+desktop = ["gnome", "kde"]           # só aplica nesses desktops (gnome | kde | hyprland | niri)
+skip_if = "[ -f /etc/algo ]"         # se o comando der sucesso, pula o módulo
 ```
 
 O catálogo embutido fica em `catalog/default.toml`, e as configs padrão em `catalog/assets/`.
